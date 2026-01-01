@@ -1,4 +1,4 @@
-import { User, Project, Material } from '../types';
+import { User, Project, Material, RFQ } from '../types';
 
 interface LoginResponse {
   user: User;
@@ -52,14 +52,14 @@ const convertFrontendUserToApi = (frontendUser: Partial<User>, isCreate: boolean
     email: frontendUser.email || frontendUser.username, // Use email if available, otherwise username
   };
 
-  if (isCreate && frontendUser.password) {
-    apiUser.password = frontendUser.password;
-    apiUser.password_confirmation = frontendUser.password;
+  if (isCreate && (frontendUser as any).password) {
+    apiUser.password = (frontendUser as any).password;
+    apiUser.password_confirmation = (frontendUser as any).password;
   }
 
-  if (frontendUser.password) {
-    apiUser.password = frontendUser.password;
-    apiUser.password_confirmation = frontendUser.password;
+  if ('password' in frontendUser && (frontendUser as any).password) {
+    apiUser.password = (frontendUser as any).password;
+    apiUser.password_confirmation = (frontendUser as any).password;
   }
 
   return apiUser;
@@ -122,7 +122,13 @@ export interface CreateUserData {
 }
 
 export const createUserAPI = async (userData: CreateUserData, token: string): Promise<User> => {
-  const apiUserData = convertFrontendUserToApi(userData, true);
+  // Create a copy of userData with proper role typing
+  const userDataWithValidRole = {
+    ...userData,
+    role: userData.role as 'ADMIN' | 'OPERATOR' | 'MANAGER' || 'OPERATOR'
+  };
+
+  const apiUserData = convertFrontendUserToApi(userDataWithValidRole, true);
 
   const response = await fetch('http://localhost:8000/api/users', {
     method: 'POST',
@@ -646,5 +652,211 @@ export const deleteMaterialAPI = async (id: string | number, token: string): Pro
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
     throw new Error(errorData.message || 'Failed to delete material');
+  }
+};
+
+/**
+ * Convert API response field names to frontend field names for RFQ
+ */
+const convertApiRfqToFrontend = (apiRfq: any): RFQ => {
+  return {
+    id: apiRfq.id.toString(), // Convert to string to match frontend type
+    code: apiRfq.code,
+    date: apiRfq.date,
+    description: apiRfq.description,
+    items: Array.isArray(apiRfq.items) ? apiRfq.items.map((item: any) => ({
+      materialId: item.materialId?.toString() || item.material_id?.toString(),
+      name: item.name,
+      qty: item.qty || item.quantity,
+      price: item.price
+    })) : [],
+    status: apiRfq.status
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for RFQ
+ */
+const convertFrontendRfqToApi = (frontendRfq: Partial<RFQ>, isCreate: boolean = false): any => {
+  const apiRfq: any = {
+    code: frontendRfq.code,
+    date: frontendRfq.date,
+    description: frontendRfq.description,
+    status: frontendRfq.status,
+  };
+
+  // Only include items if they exist
+  if (frontendRfq.items && Array.isArray(frontendRfq.items)) {
+    apiRfq.items = frontendRfq.items.map(item => ({
+      material_id: item.materialId,
+      name: item.name,
+      qty: item.qty,
+      price: item.price
+    }));
+  }
+
+  return apiRfq;
+};
+
+/**
+ * Get all RFQs API call
+ */
+export const getRfqsAPI = async (token: string): Promise<RFQ[]> => {
+  const response = await fetch('http://localhost:8000/api/rfqs', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch RFQs');
+  }
+
+  const apiResponse = await response.json();
+  // Handle both array response and paginated response
+  const rfqsData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  return rfqsData.map(convertApiRfqToFrontend);
+};
+
+/**
+ * Get single RFQ API call
+ */
+export const getRfqAPI = async (id: string | number, token: string): Promise<RFQ> => {
+  const response = await fetch(`http://localhost:8000/api/rfqs/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch RFQ with ID: ${id}`);
+  }
+
+  const apiRfq = await response.json();
+  return convertApiRfqToFrontend(apiRfq);
+};
+
+/**
+ * Create RFQ API call
+ */
+export interface CreateRfqData {
+  code: string;
+  date: string;
+  description: string;
+  status: 'DRAFT' | 'PO_CREATED';
+  items: {
+    material_id: string;
+    name: string;
+    qty: number;
+    price?: number;
+  }[];
+}
+
+export const createRfqAPI = async (rfqData: CreateRfqData, token: string): Promise<RFQ> => {
+  const response = await fetch('http://localhost:8000/api/rfqs', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(rfqData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create RFQ');
+    }
+  }
+
+  const createdRfq = await response.json();
+  return convertApiRfqToFrontend(createdRfq);
+};
+
+/**
+ * Update RFQ API call
+ */
+export const updateRfqAPI = async (id: string | number, rfqData: Partial<RFQ>, token: string): Promise<RFQ> => {
+  const apiRfqData: any = {
+    code: rfqData.code,
+    date: rfqData.date,
+    description: rfqData.description,
+    status: rfqData.status,
+  };
+
+  // Only include items if they exist
+  if ('items' in rfqData && (rfqData as any).items && Array.isArray((rfqData as any).items)) {
+    apiRfqData.items = (rfqData as any).items.map((item: any) => ({
+      material_id: item.materialId,
+      name: item.name,
+      qty: item.qty,
+      price: item.price
+    }));
+  }
+
+  const response = await fetch(`http://localhost:8000/api/rfqs/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiRfqData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('RFQ not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update RFQ');
+    }
+  }
+
+  const updatedRfq = await response.json();
+  return convertApiRfqToFrontend(updatedRfq);
+};
+
+/**
+ * Delete RFQ API call
+ */
+export const deleteRfqAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/rfqs/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('RFQ not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete RFQ');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete RFQ');
   }
 };

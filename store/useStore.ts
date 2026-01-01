@@ -40,6 +40,7 @@ interface AppState {
   can: (action: string, module: string) => boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  initializeData: () => Promise<void>;
 
   addProjectItem: (item: ProjectItem) => void;
   deleteProjectItem: (id: string) => void;
@@ -61,7 +62,9 @@ interface AppState {
   reloadProjects: () => Promise<void>;
   addMaterial: (m: Material) => void;
   updateMaterial: (um: Material) => void;
+  deleteMaterial: (id: string) => void;
   adjustStock: (matId: string, amount: number) => void;
+  loadMaterials: () => Promise<void>;
   addMachine: (m: Machine) => void;
   updateMachine: (um: Machine) => void;
   deleteMachine: (id: string) => boolean;
@@ -75,7 +78,10 @@ interface AppState {
   deleteUserAPI: (id: string) => Promise<void>;
   downloadDatabase: () => void;
   validateToWarehouse: (itemId: string, qty: number) => void;
-  addRFQ: (rfq: RFQ) => void;
+  addRFQ: (rfq: RFQ) => Promise<void>;
+  updateRFQ: (id: string, rfqData: Partial<RFQ>) => Promise<void>;
+  deleteRFQ: (id: string) => Promise<void>;
+  loadRFQs: () => Promise<void>;
   createPO: (po: PurchaseOrder) => void;
   receiveGoods: (receiving: ReceivingGoods) => void;
   createDeliveryOrder: (sj: DeliveryOrder) => void;
@@ -107,13 +113,14 @@ export const useStore = create<AppState>((set, get) => ({
       try {
         const projects = await getProjectsAPI(token);
         const materials = await getMaterialsAPI(token);
-        set({ projects, materials });
+        const rfqs = await import('../lib/api').then(mod => mod.getRfqsAPI(token));
+        set({ projects, materials, rfqs });
       } catch (error) {
         console.error('Failed to initialize data:', error);
-        set({ projects: [], materials: [] });
+        set({ projects: [], materials: [], rfqs: [] });
       }
     } else {
-      set({ projects: [], materials: [] });
+      set({ projects: [], materials: [], rfqs: [] });
     }
   },
 
@@ -141,21 +148,23 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.setItem('currentUser', JSON.stringify(user));
       localStorage.setItem('token', token);
 
-      // Load projects and materials after successful login
+      // Load projects, materials, and RFQs after successful login
       if (token) {
         try {
           const projects = await getProjectsAPI(token);
           set({ projects });
           // Load materials using the loadMaterials function
           await get().loadMaterials();
+          // Load RFQs using the new loadRFQs function
+          await get().loadRFQs();
         } catch (error) {
-          console.error('Failed to load projects and materials:', error);
+          console.error('Failed to load projects, materials, and RFQs:', error);
           // Set empty arrays if loading fails
-          set({ projects: [], materials: [] });
+          set({ projects: [], materials: [], rfqs: [] });
         }
       } else {
-        // If no token, set empty projects and materials
-        set({ projects: [], materials: [] });
+        // If no token, set empty projects, materials, and RFQs
+        set({ projects: [], materials: [], rfqs: [] });
       }
 
       return true;
@@ -501,19 +510,20 @@ export const useStore = create<AppState>((set, get) => ({
     const token = get().token;
     if (!token) {
       console.error('No token available for API call');
-      set({ projects: [], materials: [], users: [] });
+      set({ projects: [], materials: [], users: [], rfqs: [] });
       return;
     }
 
     try {
       const projects = await getProjectsAPI(token);
       const materials = await getMaterialsAPI(token);
+      const rfqs = await import('../lib/api').then(mod => mod.getRfqsAPI(token));
       const { getUsersAPI } = await import('../lib/api');
       const users = await getUsersAPI(token);
-      set({ projects, materials, users });
+      set({ projects, materials, rfqs, users });
     } catch (error) {
-      console.error('Failed to reload projects, materials and users:', error);
-      set({ projects: [], materials: [], users: [] });
+      console.error('Failed to reload projects, materials, RFQs and users:', error);
+      set({ projects: [], materials: [], rfqs: [], users: [] });
     }
   },
 
@@ -662,12 +672,15 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const { createUserAPI } = await import('../lib/api');
       // Prepare user data for API call
-      const userDataForAPI = {
+      const userDataForAPI: any = {
         ...userData,
         email: userData.email || userData.username,
-        password: userData.password,
-        password_confirmation: userData.password
       };
+
+      if ((userData as any).password) {
+        userDataForAPI.password = (userData as any).password;
+        userDataForAPI.password_confirmation = (userData as any).password;
+      }
       const newUser = await createUserAPI(userDataForAPI as any, token);
       set(s => ({ users: [...s.users, newUser] }));
     } catch (error) {
@@ -691,7 +704,7 @@ export const useStore = create<AppState>((set, get) => ({
       };
 
       // Only include password fields if password is provided
-      if (userData.password) {
+      if ('password' in userData && userData.password) {
         userDataForAPI.password = userData.password;
         userDataForAPI.password_confirmation = userData.password;
       }
@@ -747,7 +760,107 @@ export const useStore = create<AppState>((set, get) => ({
     };
   }),
 
-  addRFQ: (rfq) => set(s => ({ rfqs: [rfq, ...s.rfqs] })),
+  addRFQ: async (rfq) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ rfqs: [rfq, ...s.rfqs] }));
+      return;
+    }
+
+    try {
+      // Format the RFQ data for the API
+      const rfqData = {
+        code: rfq.code,
+        date: rfq.date,
+        description: rfq.description,
+        status: rfq.status,
+        items: rfq.items.map(item => ({
+          material_id: item.materialId,
+          name: item.name,
+          qty: item.qty,
+          price: item.price
+        }))
+      };
+
+      // Create the RFQ via API
+      const createdRfq = await import('../lib/api').then(mod =>
+        mod.createRfqAPI(rfqData, token)
+      );
+
+      // Update the state with the created RFQ from the API (which may have additional fields)
+      set(s => ({ rfqs: [createdRfq, ...s.rfqs] }));
+    } catch (error) {
+      console.error('Failed to create RFQ via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ rfqs: [rfq, ...s.rfqs] }));
+      throw error;
+    }
+  },
+  updateRFQ: async (id, rfqData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ rfqs: s.rfqs.map(r => r.id === id ? { ...r, ...rfqData } : r) }));
+      return;
+    }
+
+    try {
+      // Update the RFQ via API
+      const updatedRfq = await import('../lib/api').then(mod =>
+        mod.updateRfqAPI(id, rfqData, token)
+      );
+
+      // Update the state with the updated RFQ from the API
+      set(s => ({ rfqs: s.rfqs.map(r => r.id === id ? updatedRfq : r) }));
+    } catch (error) {
+      console.error('Failed to update RFQ via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ rfqs: s.rfqs.map(r => r.id === id ? { ...r, ...rfqData } : r) }));
+      throw error;
+    }
+  },
+  deleteRFQ: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ rfqs: s.rfqs.filter(r => r.id !== id) }));
+      return;
+    }
+
+    try {
+      // Delete the RFQ via API
+      await import('../lib/api').then(mod =>
+        mod.deleteRfqAPI(id, token)
+      );
+
+      // Update the state to remove the deleted RFQ
+      set(s => ({ rfqs: s.rfqs.filter(r => r.id !== id) }));
+    } catch (error) {
+      console.error('Failed to delete RFQ via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ rfqs: s.rfqs.filter(r => r.id !== id) }));
+      throw error;
+    }
+  },
+  loadRFQs: async () => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const rfqs = await import('../lib/api').then(mod =>
+        mod.getRfqsAPI(token)
+      );
+      set({ rfqs });
+    } catch (error) {
+      console.error('Failed to load RFQs from API:', error);
+      set({ rfqs: [] });
+      throw error;
+    }
+  },
   createPO: (po) => set(s => ({ pos: [po, ...s.pos] })),
   receiveGoods: (r) => set(s => ({ receivings: [r, ...s.receivings] })),
   createDeliveryOrder: (sj) => set(s => ({ deliveryOrders: [sj, ...s.deliveryOrders] })),

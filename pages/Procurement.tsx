@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { 
+import {
   Plus, FileText, Truck, Trash2, CheckCircle, X, ChevronRight, Save, Eye, Edit3
 } from 'lucide-react';
 import { RFQ, PurchaseOrder, ReceivingGoods, ProcurementItem } from '../types';
@@ -9,12 +9,21 @@ import { RFQ, PurchaseOrder, ReceivingGoods, ProcurementItem } from '../types';
 type TabType = 'SUPPLIERS' | 'RFQ' | 'PO' | 'RECEIVING';
 
 export const Procurement: React.FC = () => {
-  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can } = useStore();
+  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs } = useStore();
   const [activeTab, setActiveTab] = useState<TabType>('RFQ');
-  
+
   const [isRfqModalOpen, setIsRfqModalOpen] = useState(false);
   const [isPoModalOpen, setIsPoModalOpen] = useState<RFQ | null>(null);
   const [isBdModalOpen, setIsBdModalOpen] = useState<PurchaseOrder | null>(null);
+
+  // Load RFQs when component mounts or when RFQ tab is active
+  useEffect(() => {
+    if (activeTab === 'RFQ') {
+      loadRFQs().catch(error => {
+        console.error('Failed to load RFQs:', error);
+      });
+    }
+  }, [activeTab, loadRFQs]);
 
   const [newRfq, setNewRfq] = useState({ description: '', items: [] as ProcurementItem[] });
   const [tempItem, setTempItem] = useState({ materialId: '', qty: 0 });
@@ -34,26 +43,59 @@ export const Procurement: React.FC = () => {
     }
   };
 
-  const submitRFQ = (e: React.FormEvent) => {
+  const submitRFQ = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newRfq.items.length === 0) return alert("Pilih item!");
-    const rfq: RFQ = {
-      id: `rfq-${Date.now()}`,
-      code: `RFQ-${Math.floor(Math.random() * 9000) + 1000}`,
-      date: new Date().toISOString(),
-      description: newRfq.description,
-      items: newRfq.items,
-      status: 'DRAFT'
-    };
-    addRFQ(rfq);
-    setNewRfq({ description: '', items: [] });
-    setIsRfqModalOpen(false);
+
+    try {
+      const rfq: RFQ = {
+        id: `rfq-${Date.now()}`,
+        code: `RFQ-${Math.floor(Math.random() * 9000) + 1000}`,
+        date: new Date().toISOString(),
+        description: newRfq.description,
+        items: newRfq.items,
+        status: 'DRAFT'
+      };
+      await addRFQ(rfq);
+      setNewRfq({ description: '', items: [] });
+      setIsRfqModalOpen(false);
+    } catch (error) {
+      console.error('Failed to create RFQ:', error);
+      alert('Failed to create RFQ: ' + (error as Error).message);
+    }
   };
 
   const startCreatePO = (rfq: RFQ) => {
     setPoData({ supplierId: '', description: rfq.description, items: rfq.items.map(i => ({ ...i, price: 0 })) });
     setIsPoModalOpen(rfq);
     setActiveTab('PO');
+  };
+
+  const createPOFromRFQ = async (rfq: RFQ) => {
+    try {
+      // Create the PO first
+      const po: PurchaseOrder = {
+        id: `po-${Date.now()}`,
+        code: `PO-${Math.floor(Math.random() * 9000) + 1000}`,
+        date: new Date().toISOString(),
+        supplierId: poData.supplierId,
+        description: poData.description,
+        items: poData.items,
+        status: 'OPEN',
+        grandTotal: poData.items.reduce((sum, item) => sum + (item.price || 0) * item.qty, 0)
+      };
+      createPO(po);
+
+      // Update the RFQ status to 'PO_CREATED'
+      await updateRFQ(rfq.id, { status: 'PO_CREATED' });
+
+      // Close the modal and reset state
+      setIsPoModalOpen(null);
+      setPoData({ supplierId: '', description: '', items: [] });
+    } catch (error) {
+      console.error('Failed to create PO or update RFQ:', error);
+      alert('Failed to create PO: ' + (error as Error).message);
+    }
   };
 
   const startReceiving = (po: PurchaseOrder) => {
@@ -113,9 +155,28 @@ export const Procurement: React.FC = () => {
                       <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${r.status === 'PO_CREATED' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>{r.status}</span>
                    </td>
                    <td className="px-8 py-5 text-right">
-                      {r.status === 'DRAFT' && (
-                        <button onClick={() => startCreatePO(r)} className="bg-slate-900 text-white px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-2 ml-auto shadow-lg active:scale-95">CREATE PO <ChevronRight size={14}/></button>
-                      )}
+                      <div className="flex justify-end gap-2">
+                        {r.status === 'DRAFT' && (
+                          <button
+                            onClick={async () => {
+                              if (window.confirm('Are you sure you want to delete this RFQ?')) {
+                                try {
+                                  await deleteRFQ(r.id);
+                                } catch (error) {
+                                  console.error('Failed to delete RFQ:', error);
+                                  alert('Failed to delete RFQ: ' + (error as Error).message);
+                                }
+                              }
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                        {r.status === 'DRAFT' && (
+                          <button onClick={() => startCreatePO(r)} className="bg-slate-900 text-white px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-2 ml-auto shadow-lg active:scale-95">CREATE PO <ChevronRight size={14}/></button>
+                        )}
+                      </div>
                    </td>
                  </tr>
                ))}
@@ -222,6 +283,62 @@ export const Procurement: React.FC = () => {
               </div>
               <div className="p-6 md:p-8 border-t shrink-0 bg-slate-50 flex justify-end">
                   <button onClick={submitRFQ} className="w-full md:w-auto bg-slate-900 text-white px-12 py-5 rounded-[24px] font-black text-lg uppercase shadow-2xl tracking-[0.1em] flex items-center justify-center gap-4 hover:bg-blue-600 transition-all active:scale-95"><Save size={20}/> SAVE RFQ DRAFT</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* PO MODAL */}
+      {isPoModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 z-[300] flex items-center justify-center p-2 sm:p-4 md:p-6 backdrop-blur-md">
+           <div className="bg-white rounded-[32px] md:rounded-[48px] w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+              <div className="p-6 md:p-8 border-b bg-slate-50 shrink-0 flex justify-between items-center">
+                 <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">Create Purchase Order</h2>
+                 <button onClick={() => setIsPoModalOpen(null)} className="p-2 hover:bg-slate-200 rounded-full transition-all text-slate-400"><X size={28}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10 space-y-10">
+                 <div className="space-y-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Select Supplier</label>
+                    <select className="w-full p-4 md:p-6 bg-slate-50 border border-slate-200 rounded-3xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={poData.supplierId} onChange={e => setPoData({...poData, supplierId: e.target.value})}>
+                      <option value="">Choose supplier...</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                 </div>
+
+                 <div className="space-y-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Description</label>
+                    <input className="w-full p-4 md:p-6 bg-slate-50 border border-slate-200 rounded-3xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={poData.description} onChange={e => setPoData({...poData, description: e.target.value})} />
+                 </div>
+
+                 <div className="space-y-4">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3"><FileText size={14}/> PO ITEMS</h4>
+                    <div className="divide-y border border-slate-100 rounded-[32px] overflow-hidden bg-white shadow-sm">
+                       {poData.items.map((it, idx) => (
+                         <div key={idx} className="p-5 md:p-6 flex flex-col sm:flex-row justify-between items-center bg-white hover:bg-slate-50 transition-colors gap-4">
+                            <div className="text-center sm:text-left">
+                               <p className="font-black text-slate-800 text-base uppercase leading-tight">{it.name}</p>
+                               <p className="text-[9px] text-slate-400 font-black uppercase mt-1 tracking-widest">Qty: {it.qty}</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                               <div className="w-32">
+                                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-center block">Price</label>
+                                  <input type="number" className="w-full p-3 bg-white rounded-xl font-black text-center border border-slate-200 outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={it.price || 0} onChange={e => {
+                                    const newItems = [...poData.items];
+                                    newItems[idx] = { ...newItems[idx], price: Number(e.target.value) };
+                                    setPoData({...poData, items: newItems});
+                                  }} />
+                               </div>
+                               <p className="text-xl font-black text-emerald-600 leading-none">Rp{(it.price || 0) * it.qty}</p>
+                            </div>
+                         </div>
+                       ))}
+                       {poData.items.length === 0 && <div className="p-16 text-center text-slate-200 font-black uppercase italic tracking-[0.2em] text-xs">No items in PO</div>}
+                    </div>
+                 </div>
+              </div>
+              <div className="p-6 md:p-8 border-t shrink-0 bg-slate-50 flex justify-end gap-4">
+                 <button onClick={() => setIsPoModalOpen(null)} className="px-8 py-4 rounded-[24px] font-black text-lg uppercase border border-slate-300 text-slate-600 hover:bg-slate-100 transition-all">CANCEL</button>
+                 <button onClick={() => createPOFromRFQ(isPoModalOpen!)} className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-lg uppercase shadow-2xl hover:bg-blue-600 transition-all">CREATE PO</button>
               </div>
            </div>
         </div>
