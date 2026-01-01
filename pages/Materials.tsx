@@ -8,7 +8,7 @@ const CATEGORIES = ['RAW', 'FINISHING', 'HARDWARE'];
 const UNITS = ['PCS', 'BOX', 'LEMBAR', 'KG', 'METER', 'ROLL', 'SET'];
 
 export const Materials: React.FC = () => {
-  const { materials, addMaterial, updateMaterial, adjustStock, can } = useStore();
+  const { materials, addMaterial, updateMaterial, adjustStock, deleteMaterial, can } = useStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,19 +31,32 @@ export const Materials: React.FC = () => {
   const totalPages = Math.ceil(filteredMaterials.length / itemsPerPage);
   const paginatedMaterials = filteredMaterials.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingId) { updateMaterial({ ...formData, id: editingId } as Material); } 
-    else { addMaterial({ ...formData, id: `mat-${Date.now()}` } as Material); }
-    setIsModalOpen(false);
+    try {
+      if (editingId) {
+        await updateMaterial({ ...formData, id: editingId } as Material);
+      } else {
+        await addMaterial({ ...formData, id: `mat-${Date.now()}` } as Material);
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error('Error saving material:', error);
+      // Optionally show an error message to the user
+    }
   };
 
-  const handleAdjust = (e: React.FormEvent) => {
+  const handleAdjust = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (adjustModal) {
-      adjustStock(adjustModal.id, adjustValue);
-      setAdjustModal(null);
-      setAdjustValue(0);
+    try {
+      if (adjustModal) {
+        await adjustStock(adjustModal.id, adjustValue);
+        setAdjustModal(null);
+        setAdjustValue(0);
+      }
+    } catch (error) {
+      console.error('Error adjusting stock:', error);
+      // Optionally show an error message to the user
     }
   };
 
@@ -97,6 +110,16 @@ export const Materials: React.FC = () => {
                          <div className="flex justify-end gap-2">
                             <button onClick={() => setAdjustModal({id: mat.id, name: mat.name})} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg" title="Adjustment Stock"><Package size={18}/></button>
                             <button onClick={() => { setEditingId(mat.id); setFormData(mat); setIsModalOpen(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit3 size={18}/></button>
+                            <button onClick={async () => {
+                              if (window.confirm('Apakah Anda yakin ingin menghapus material ini?')) {
+                                try {
+                                  await deleteMaterial(mat.id);
+                                } catch (error) {
+                                  console.error('Error deleting material:', error);
+                                  // Optionally show an error message to the user
+                                }
+                              }
+                            }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><X size={18}/></button>
                          </div>
                       </td>
                    </tr>
@@ -139,6 +162,10 @@ export const Materials: React.FC = () => {
                       <div className="space-y-2">
                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Safety Stock (Limit)</label>
                          <input type="number" required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black outline-none" value={formData.safetyStock} onChange={e => setFormData({...formData, safetyStock: Number(e.target.value)})} />
+                      </div>
+                      <div className="space-y-2">
+                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Harga Satuan (Rp)</label>
+                         <input type="number" required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black outline-none" value={formData.pricePerUnit} onChange={e => setFormData({...formData, pricePerUnit: Number(e.target.value)})} />
                       </div>
                    </div>
                 </form>

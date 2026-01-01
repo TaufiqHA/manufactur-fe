@@ -7,14 +7,18 @@ import {
   ASSEMBLY_STEPS
 } from '../types';
 import {
-  MOCK_MATERIALS, MOCK_ITEMS, MOCK_MACHINES, MOCK_TASKS, MOCK_USERS, MOCK_LOGS,
+  MOCK_ITEMS, MOCK_MACHINES, MOCK_TASKS, MOCK_USERS, MOCK_LOGS,
   MOCK_SUPPLIERS, MOCK_RFQS, MOCK_POS, MOCK_RECEIVINGS, MOCK_DELIVERY_ORDERS
 } from '../lib/mockData';
 import {
   getProjectsAPI,
   createProjectAPI,
   updateProjectAPI,
-  deleteProjectAPI
+  deleteProjectAPI,
+  getMaterialsAPI,
+  createMaterialAPI,
+  updateMaterialAPI,
+  deleteMaterialAPI
 } from '../lib/api';
 
 interface AppState {
@@ -84,7 +88,7 @@ export const useStore = create<AppState>((set, get) => ({
   currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'),
   token: localStorage.getItem('token') || null,
   projects: [],
-  materials: MOCK_MATERIALS,
+  materials: [],
   items: MOCK_ITEMS,
   machines: MOCK_MACHINES,
   tasks: MOCK_TASKS,
@@ -104,19 +108,20 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.setItem('currentUser', JSON.stringify(user));
       localStorage.setItem('token', token);
 
-      // Load projects after successful login
+      // Load projects and materials after successful login
       if (token) {
         try {
           const projects = await getProjectsAPI(token);
-          set({ projects });
+          const materials = await getMaterialsAPI(token);
+          set({ projects, materials });
         } catch (error) {
-          console.error('Failed to load projects:', error);
-          // Set empty array if project loading fails
-          set({ projects: [] });
+          console.error('Failed to load projects and materials:', error);
+          // Set empty arrays if loading fails
+          set({ projects: [], materials: [] });
         }
       } else {
-        // If no token, set empty projects
-        set({ projects: [] });
+        // If no token, set empty projects and materials
+        set({ projects: [], materials: [] });
       }
 
       return true;
@@ -462,24 +467,134 @@ export const useStore = create<AppState>((set, get) => ({
     const token = get().token;
     if (!token) {
       console.error('No token available for API call');
-      set({ projects: [], users: [] });
+      set({ projects: [], materials: [], users: [] });
       return;
     }
 
     try {
       const projects = await getProjectsAPI(token);
+      const materials = await getMaterialsAPI(token);
       const { getUsersAPI } = await import('../lib/api');
       const users = await getUsersAPI(token);
-      set({ projects, users });
+      set({ projects, materials, users });
     } catch (error) {
-      console.error('Failed to reload projects and users:', error);
-      set({ projects: [], users: [] });
+      console.error('Failed to reload projects, materials and users:', error);
+      set({ projects: [], materials: [], users: [] });
     }
   },
 
-  addMaterial: (m) => set(s => ({ materials: [m, ...s.materials] })),
-  updateMaterial: (m) => set(s => ({ materials: s.materials.map(x => x.id === m.id ? m : x) })),
-  adjustStock: (id, q) => set(s => ({ materials: s.materials.map(x => x.id === id ? {...x, currentStock: x.currentStock + q} : x) })),
+  addMaterial: async (m) => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      set(s => ({ materials: [m, ...s.materials] })); // Fallback to local state
+      return;
+    }
+
+    try {
+      const materialData = {
+        code: m.code,
+        name: m.name,
+        unit: m.unit,
+        current_stock: m.currentStock || 0,
+        safety_stock: m.safetyStock || 0,
+        price_per_unit: m.pricePerUnit || 0,
+        category: m.category
+      };
+      const createdMaterial = await createMaterialAPI(materialData, token);
+      set(s => ({ materials: [createdMaterial, ...s.materials] }));
+    } catch (error) {
+      console.error('Failed to add material via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ materials: [m, ...s.materials] }));
+      throw error;
+    }
+  },
+  updateMaterial: async (m) => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      set(s => ({ materials: s.materials.map(x => x.id === m.id ? m : x) })); // Fallback to local state
+      return;
+    }
+
+    try {
+      const materialData = {
+        code: m.code,
+        name: m.name,
+        unit: m.unit,
+        current_stock: m.currentStock,
+        safety_stock: m.safetyStock,
+        price_per_unit: m.pricePerUnit,
+        category: m.category
+      };
+      const updatedMaterial = await updateMaterialAPI(m.id, materialData, token);
+      set(s => ({ materials: s.materials.map(x => x.id === m.id ? updatedMaterial : x) }));
+    } catch (error) {
+      console.error('Failed to update material via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ materials: s.materials.map(x => x.id === m.id ? m : x) }));
+      throw error;
+    }
+  },
+  adjustStock: async (id, q) => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      set(s => ({ materials: s.materials.map(x => x.id === id ? {...x, currentStock: x.currentStock + q} : x) })); // Fallback to local state
+      return;
+    }
+
+    try {
+      // First get the current material
+      const currentMaterial = get().materials.find(x => x.id === id);
+      if (!currentMaterial) {
+        throw new Error('Material not found');
+      }
+
+      // Update the material with the new stock
+      const updatedMaterial = {
+        ...currentMaterial,
+        currentStock: currentMaterial.currentStock + q
+      };
+
+      const materialData = {
+        code: currentMaterial.code,
+        name: currentMaterial.name,
+        unit: currentMaterial.unit,
+        current_stock: updatedMaterial.currentStock,
+        safety_stock: currentMaterial.safetyStock,
+        price_per_unit: currentMaterial.pricePerUnit,
+        category: currentMaterial.category
+      };
+
+      const result = await updateMaterialAPI(id, materialData, token);
+      set(s => ({ materials: s.materials.map(x => x.id === id ? result : x) }));
+    } catch (error) {
+      console.error('Failed to adjust stock via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ materials: s.materials.map(x => x.id === id ? {...x, currentStock: x.currentStock + q} : x) }));
+      throw error;
+    }
+  },
+  deleteMaterial: async (id: string) => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      set(s => ({ materials: s.materials.filter(x => x.id !== id) })); // Fallback to local state
+      return;
+    }
+
+    try {
+      await deleteMaterialAPI(id, token);
+      set(s => ({ materials: s.materials.filter(x => x.id !== id) }));
+    } catch (error) {
+      console.error('Failed to delete material via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ materials: s.materials.filter(x => x.id !== id) }));
+      throw error;
+    }
+  },
   addMachine: (m) => set(s => ({ machines: [...s.machines, m] })),
   updateMachine: (m) => set(s => ({ machines: s.machines.map(x => x.id === m.id ? m : x) })),
   deleteMachine: (id) => { set(s => ({ machines: s.machines.filter(x => x.id !== id) })); return true; },

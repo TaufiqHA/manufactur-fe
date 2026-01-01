@@ -1,4 +1,4 @@
-import { User, Project } from '../types';
+import { User, Project, Material } from '../types';
 
 interface LoginResponse {
   user: User;
@@ -462,5 +462,189 @@ export const deleteProjectAPI = async (id: string | number, token: string): Prom
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
     throw new Error(errorData.message || 'Failed to delete project');
+  }
+};
+
+/**
+ * Convert API response field names to frontend field names for Material
+ */
+const convertApiMaterialToFrontend = (apiMaterial: any): Material => {
+  return {
+    id: apiMaterial.id.toString(), // Convert to string to match frontend type
+    code: apiMaterial.code,
+    name: apiMaterial.name,
+    unit: apiMaterial.unit,
+    currentStock: apiMaterial.current_stock || apiMaterial.currentStock || 0,
+    safetyStock: apiMaterial.safety_stock || apiMaterial.safetyStock || 0,
+    pricePerUnit: parseFloat(apiMaterial.price_per_unit || apiMaterial.pricePerUnit || 0),
+    category: apiMaterial.category,
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for Material
+ */
+const convertFrontendMaterialToApi = (frontendMaterial: Partial<Material>, isCreate: boolean = false): any => {
+  const apiMaterial: any = {
+    code: frontendMaterial.code,
+    name: frontendMaterial.name,
+    unit: frontendMaterial.unit,
+    current_stock: frontendMaterial.currentStock,
+    safety_stock: frontendMaterial.safetyStock,
+    price_per_unit: frontendMaterial.pricePerUnit,
+    category: frontendMaterial.category,
+  };
+
+  // Only include id if it's not for creation
+  if (!isCreate && frontendMaterial.id) {
+    apiMaterial.id = frontendMaterial.id;
+  }
+
+  return apiMaterial;
+};
+
+/**
+ * Get all materials API call
+ */
+export const getMaterialsAPI = async (token: string): Promise<Material[]> => {
+  const response = await fetch('http://localhost:8000/api/materials', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch materials');
+  }
+
+  const apiResponse = await response.json();
+  // Handle both array response and paginated response
+  const materialsData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  return materialsData.map(convertApiMaterialToFrontend);
+};
+
+/**
+ * Get single material API call
+ */
+export const getMaterialAPI = async (id: string | number, token: string): Promise<Material> => {
+  const response = await fetch(`http://localhost:8000/api/materials/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch material');
+  }
+
+  const apiMaterial = await response.json();
+  return convertApiMaterialToFrontend(apiMaterial);
+};
+
+/**
+ * Create material API call
+ */
+export interface CreateMaterialData {
+  code: string;
+  name: string;
+  unit: string;
+  current_stock: number;
+  safety_stock: number;
+  price_per_unit: number;
+  category: 'RAW' | 'FINISHING' | 'HARDWARE';
+}
+
+export const createMaterialAPI = async (materialData: CreateMaterialData, token: string): Promise<Material> => {
+  const response = await fetch('http://localhost:8000/api/materials', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(materialData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create material');
+    }
+  }
+
+  const createdMaterial = await response.json();
+  return convertApiMaterialToFrontend(createdMaterial);
+};
+
+/**
+ * Update material API call
+ */
+export const updateMaterialAPI = async (id: string | number, materialData: Partial<Material>, token: string): Promise<Material> => {
+  const apiMaterialData = {
+    code: materialData.code,
+    name: materialData.name,
+    unit: materialData.unit,
+    current_stock: materialData.currentStock,
+    safety_stock: materialData.safetyStock,
+    price_per_unit: materialData.pricePerUnit,
+    category: materialData.category,
+  };
+
+  const response = await fetch(`http://localhost:8000/api/materials/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiMaterialData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update material');
+    }
+  }
+
+  const updatedMaterial = await response.json();
+  return convertApiMaterialToFrontend(updatedMaterial);
+};
+
+/**
+ * Delete material API call
+ */
+export const deleteMaterialAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/materials/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete material');
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete material');
   }
 };
