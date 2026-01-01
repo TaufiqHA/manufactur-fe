@@ -100,6 +100,39 @@ export const useStore = create<AppState>((set, get) => ({
   receivings: MOCK_RECEIVINGS,
   deliveryOrders: MOCK_DELIVERY_ORDERS,
 
+  // Initialize data if user is already logged in
+  initializeData: async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const projects = await getProjectsAPI(token);
+        const materials = await getMaterialsAPI(token);
+        set({ projects, materials });
+      } catch (error) {
+        console.error('Failed to initialize data:', error);
+        set({ projects: [], materials: [] });
+      }
+    } else {
+      set({ projects: [], materials: [] });
+    }
+  },
+
+  // Function to load materials when needed
+  loadMaterials: async () => {
+    const token = get().token;
+    if (token) {
+      try {
+        const materials = await getMaterialsAPI(token);
+        set({ materials });
+      } catch (error) {
+        console.error('Failed to load materials:', error);
+        set({ materials: [] });
+      }
+    } else {
+      set({ materials: [] });
+    }
+  },
+
   can: (a, m) => true,
   login: async (email, password) => {
     try {
@@ -112,8 +145,9 @@ export const useStore = create<AppState>((set, get) => ({
       if (token) {
         try {
           const projects = await getProjectsAPI(token);
-          const materials = await getMaterialsAPI(token);
-          set({ projects, materials });
+          set({ projects });
+          // Load materials using the loadMaterials function
+          await get().loadMaterials();
         } catch (error) {
           console.error('Failed to load projects and materials:', error);
           // Set empty arrays if loading fails
@@ -139,7 +173,7 @@ export const useStore = create<AppState>((set, get) => ({
       });
     }
 
-    set({ currentUser: null, token: null, projects: [], users: [] });
+    set({ currentUser: null, token: null, projects: [], materials: [], users: [] });
     localStorage.removeItem('currentUser');
     localStorage.removeItem('token');
   },
@@ -721,3 +755,4 @@ export const useStore = create<AppState>((set, get) => ({
   validateDeliveryOrder: (id) => set(s => ({ deliveryOrders: s.deliveryOrders.map(x => x.id === id ? {...x, status: 'VALIDATED'} : x) })),
   deleteDeliveryOrder: (id) => set(s => ({ deliveryOrders: s.deliveryOrders.filter(x => x.id !== id) }))
 }));
+

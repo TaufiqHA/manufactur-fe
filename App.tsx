@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './store/useStore';
 import { Layout } from './components/Layout';
@@ -27,6 +27,13 @@ const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
 };
 
 function App() {
+  const initializeData = useStore(state => state.initializeData);
+
+  useEffect(() => {
+    // Initialize data when app starts
+    initializeData();
+  }, [initializeData]);
+
   return (
     <HashRouter>
       <Layout>
