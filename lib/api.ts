@@ -1,4 +1,4 @@
-import { User, Project, Material, RFQ } from '../types';
+import { User, Project, Material, RFQ, Supplier } from '../types';
 
 interface LoginResponse {
   user: User;
@@ -858,5 +858,173 @@ export const deleteRfqAPI = async (id: string | number, token: string): Promise<
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
     throw new Error(errorData.message || 'Failed to delete RFQ');
+  }
+};
+
+/**
+ * Convert API response field names to frontend field names for Supplier
+ */
+const convertApiSupplierToFrontend = (apiSupplier: any): Supplier => {
+  return {
+    id: apiSupplier.id.toString(), // Convert to string to match frontend type
+    name: apiSupplier.name,
+    address: apiSupplier.address,
+    contact: apiSupplier.contact,
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for Supplier
+ */
+const convertFrontendSupplierToApi = (frontendSupplier: Partial<Supplier>): any => {
+  return {
+    name: frontendSupplier.name,
+    address: frontendSupplier.address,
+    contact: frontendSupplier.contact,
+  };
+};
+
+/**
+ * Get all suppliers API call
+ */
+export const getSuppliersAPI = async (token: string): Promise<Supplier[]> => {
+  const response = await fetch('http://localhost:8000/api/suppliers', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch suppliers');
+  }
+
+  const apiResponse = await response.json();
+  // Handle both array response and paginated response
+  const suppliersData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  return suppliersData.map(convertApiSupplierToFrontend);
+};
+
+/**
+ * Get single supplier API call
+ */
+export const getSupplierAPI = async (id: string | number, token: string): Promise<Supplier> => {
+  const response = await fetch(`http://localhost:8000/api/suppliers/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch supplier with ID: ${id}`);
+  }
+
+  const apiSupplier = await response.json();
+  return convertApiSupplierToFrontend(apiSupplier);
+};
+
+/**
+ * Create supplier API call
+ */
+export interface CreateSupplierData {
+  name: string;
+  address: string;
+  contact: string;
+}
+
+export const createSupplierAPI = async (supplierData: CreateSupplierData, token: string): Promise<Supplier> => {
+  const response = await fetch('http://localhost:8000/api/suppliers', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(supplierData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create supplier');
+    }
+  }
+
+  const createdSupplier = await response.json();
+  return convertApiSupplierToFrontend(createdSupplier);
+};
+
+/**
+ * Update supplier API call
+ */
+export const updateSupplierAPI = async (id: string | number, supplierData: Partial<Supplier>, token: string): Promise<Supplier> => {
+  const apiSupplierData = {
+    name: supplierData.name,
+    address: supplierData.address,
+    contact: supplierData.contact,
+  };
+
+  const response = await fetch(`http://localhost:8000/api/suppliers/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiSupplierData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('Supplier not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update supplier');
+    }
+  }
+
+  const updatedSupplier = await response.json();
+  return convertApiSupplierToFrontend(updatedSupplier);
+};
+
+/**
+ * Delete supplier API call
+ */
+export const deleteSupplierAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/suppliers/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('Supplier not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete supplier');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete supplier');
   }
 };

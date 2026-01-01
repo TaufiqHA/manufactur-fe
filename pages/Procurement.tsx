@@ -4,12 +4,12 @@ import { useStore } from '../store/useStore';
 import {
   Plus, FileText, Truck, Trash2, CheckCircle, X, ChevronRight, Save, Eye, Edit3
 } from 'lucide-react';
-import { RFQ, PurchaseOrder, ReceivingGoods, ProcurementItem } from '../types';
+import { RFQ, PurchaseOrder, ReceivingGoods, ProcurementItem, Supplier } from '../types';
 
 type TabType = 'SUPPLIERS' | 'RFQ' | 'PO' | 'RECEIVING';
 
 export const Procurement: React.FC = () => {
-  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs } = useStore();
+  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs, loadSuppliers, addSupplier, updateSupplier, deleteSupplier } = useStore();
   const [activeTab, setActiveTab] = useState<TabType>('RFQ');
 
   const [isRfqModalOpen, setIsRfqModalOpen] = useState(false);
@@ -23,12 +23,22 @@ export const Procurement: React.FC = () => {
         console.error('Failed to load RFQs:', error);
       });
     }
-  }, [activeTab, loadRFQs]);
+    if (activeTab === 'SUPPLIERS') {
+      loadSuppliers().catch(error => {
+        console.error('Failed to load suppliers:', error);
+      });
+    }
+  }, [activeTab, loadRFQs, loadSuppliers]);
 
   const [newRfq, setNewRfq] = useState({ description: '', items: [] as ProcurementItem[] });
   const [tempItem, setTempItem] = useState({ materialId: '', qty: 0 });
   const [poData, setPoData] = useState({ supplierId: '', description: '', items: [] as ProcurementItem[] });
   const [bdData, setBdData] = useState({ description: '' });
+
+  // Supplier modal state
+  const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [newSupplier, setNewSupplier] = useState({ name: '', address: '', contact: '' });
 
   if (!can('view', 'PROCUREMENT')) return <div className="p-12 text-center text-slate-500 font-bold uppercase tracking-widest">Akses Ditolak.</div>;
 
@@ -103,6 +113,55 @@ export const Procurement: React.FC = () => {
     setIsBdModalOpen(po);
   };
 
+  // Supplier functions
+  const openAddSupplierModal = () => {
+    setEditingSupplier(null);
+    setNewSupplier({ name: '', address: '', contact: '' });
+    setIsSupplierModalOpen(true);
+  };
+
+  const openEditSupplierModal = (supplier: Supplier) => {
+    setEditingSupplier(supplier);
+    setNewSupplier({ name: supplier.name, address: supplier.address, contact: supplier.contact });
+    setIsSupplierModalOpen(true);
+  };
+
+  const submitSupplier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      if (editingSupplier) {
+        // Update existing supplier
+        await updateSupplier(editingSupplier.id, newSupplier);
+      } else {
+        // Add new supplier
+        const supplierToCreate: Supplier = {
+          id: `sup-${Date.now()}`, // This will be replaced by the API response
+          ...newSupplier
+        };
+        await addSupplier(supplierToCreate);
+      }
+
+      setIsSupplierModalOpen(false);
+      setNewSupplier({ name: '', address: '', contact: '' });
+    } catch (error) {
+      console.error('Failed to save supplier:', error);
+      alert('Failed to save supplier: ' + (error as Error).message);
+    }
+  };
+
+  const deleteSupplierHandler = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this supplier?')) {
+      try {
+        await deleteSupplier(id);
+      } catch (error) {
+        console.error('Failed to delete supplier:', error);
+        alert('Failed to delete supplier: ' + (error as Error).message);
+      }
+    }
+  };
+
   return (
     <div className="space-y-6 md:space-y-10 pb-10">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -113,6 +172,9 @@ export const Procurement: React.FC = () => {
         <div className="w-full md:w-auto">
            {activeTab === 'RFQ' && (
              <button onClick={() => setIsRfqModalOpen(true)} className="w-full md:w-auto bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all"><Plus size={18}/> NEW RFQ</button>
+           )}
+           {activeTab === 'SUPPLIERS' && (
+             <button onClick={openAddSupplierModal} className="w-full md:w-auto bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 active:scale-95 transition-all"><Plus size={18}/> NEW SUPPLIER</button>
            )}
         </div>
       </div>
@@ -223,7 +285,12 @@ export const Procurement: React.FC = () => {
                    <td className="px-8 py-5 text-slate-400 italic text-[11px] truncate max-w-[250px]">{s.address}</td>
                    <td className="px-8 py-5 text-slate-600 font-mono text-xs">{s.contact}</td>
                    <td className="px-8 py-5"><span className="px-3 py-1 rounded-lg bg-blue-50 text-blue-600 text-[9px] font-black uppercase">Active</span></td>
-                   <td className="px-8 py-5 text-right"><button className="text-slate-300 p-2"><Edit3 size={16}/></button></td>
+                   <td className="px-8 py-5 text-right">
+                     <div className="flex justify-end gap-2">
+                       <button onClick={() => openEditSupplierModal(s)} className="text-slate-400 p-2 hover:text-blue-600 transition-colors"><Edit3 size={16}/></button>
+                       <button onClick={() => deleteSupplierHandler(s.id)} className="text-slate-400 p-2 hover:text-red-600 transition-colors"><Trash2 size={16}/></button>
+                     </div>
+                   </td>
                  </tr>
                ))}
             </tbody>
@@ -340,6 +407,58 @@ export const Procurement: React.FC = () => {
                  <button onClick={() => setIsPoModalOpen(null)} className="px-8 py-4 rounded-[24px] font-black text-lg uppercase border border-slate-300 text-slate-600 hover:bg-slate-100 transition-all">CANCEL</button>
                  <button onClick={() => createPOFromRFQ(isPoModalOpen!)} className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-lg uppercase shadow-2xl hover:bg-blue-600 transition-all">CREATE PO</button>
               </div>
+           </div>
+        </div>
+      )}
+
+      {/* SUPPLIER MODAL */}
+      {isSupplierModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 z-[300] flex items-center justify-center p-2 sm:p-4 md:p-6 backdrop-blur-md">
+           <div className="bg-white rounded-[32px] md:rounded-[48px] w-full max-w-2xl max-h-[95vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+              <div className="p-6 md:p-8 border-b bg-slate-50 shrink-0 flex justify-between items-center">
+                 <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">
+                   {editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}
+                 </h2>
+                 <button onClick={() => setIsSupplierModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-all text-slate-400"><X size={28}/></button>
+              </div>
+              <form onSubmit={submitSupplier} className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10 space-y-8">
+                 <div className="space-y-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Supplier Name</label>
+                    <input
+                      className="w-full p-4 md:p-6 bg-slate-50 border border-slate-200 rounded-3xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                      placeholder="e.g. ABC Supplier"
+                      value={newSupplier.name}
+                      onChange={e => setNewSupplier({...newSupplier, name: e.target.value})}
+                      required
+                    />
+                 </div>
+
+                 <div className="space-y-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Address</label>
+                    <textarea
+                      className="w-full p-4 md:p-6 bg-slate-50 border border-slate-200 rounded-3xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-100 transition-all min-h-[100px]"
+                      placeholder="e.g. Jl. Merdeka No. 123, Jakarta"
+                      value={newSupplier.address}
+                      onChange={e => setNewSupplier({...newSupplier, address: e.target.value})}
+                      required
+                    />
+                 </div>
+
+                 <div className="space-y-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Contact</label>
+                    <input
+                      className="w-full p-4 md:p-6 bg-slate-50 border border-slate-200 rounded-3xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                      placeholder="e.g. 081234567890"
+                      value={newSupplier.contact}
+                      onChange={e => setNewSupplier({...newSupplier, contact: e.target.value})}
+                      required
+                    />
+                 </div>
+                 <div className="p-6 md:p-8 border-t shrink-0 bg-slate-50 flex justify-end gap-4">
+                    <button type="button" onClick={() => setIsSupplierModalOpen(false)} className="px-8 py-4 rounded-[24px] font-black text-lg uppercase border border-slate-300 text-slate-600 hover:bg-slate-100 transition-all">CANCEL</button>
+                    <button type="submit" className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-lg uppercase shadow-2xl hover:bg-blue-600 transition-all">SAVE</button>
+                 </div>
+              </form>
            </div>
         </div>
       )}

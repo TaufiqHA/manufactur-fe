@@ -21,6 +21,14 @@ import {
   deleteMaterialAPI
 } from '../lib/api';
 
+// Import supplier API functions
+import {
+  getSuppliersAPI,
+  createSupplierAPI,
+  updateSupplierAPI,
+  deleteSupplierAPI
+} from '../lib/api';
+
 interface AppState {
   currentUser: User | null;
   token: string | null;
@@ -88,6 +96,11 @@ interface AppState {
   updateDeliveryOrder: (sj: DeliveryOrder) => void;
   validateDeliveryOrder: (id: string) => void;
   deleteDeliveryOrder: (id: string) => void;
+
+  loadSuppliers: () => Promise<void>;
+  addSupplier: (supplier: Supplier) => Promise<void>;
+  updateSupplier: (id: string, supplierData: Partial<Supplier>) => Promise<void>;
+  deleteSupplier: (id: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -858,6 +871,92 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error('Failed to load RFQs from API:', error);
       set({ rfqs: [] });
+      throw error;
+    }
+  },
+  loadSuppliers: async () => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const suppliers = await getSuppliersAPI(token);
+      set({ suppliers });
+    } catch (error) {
+      console.error('Failed to load suppliers from API:', error);
+      set({ suppliers: [] });
+      throw error;
+    }
+  },
+  addSupplier: async (supplier) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ suppliers: [supplier, ...s.suppliers] }));
+      return;
+    }
+
+    try {
+      // Format the supplier data for the API
+      const supplierData = {
+        name: supplier.name,
+        address: supplier.address,
+        contact: supplier.contact,
+      };
+
+      // Create the supplier via API
+      const createdSupplier = await createSupplierAPI(supplierData, token);
+
+      // Update the state with the created supplier from the API (which may have additional fields)
+      set(s => ({ suppliers: [createdSupplier, ...s.suppliers] }));
+    } catch (error) {
+      console.error('Failed to create supplier via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ suppliers: [supplier, ...s.suppliers] }));
+      throw error;
+    }
+  },
+  updateSupplier: async (id, supplierData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ suppliers: s.suppliers.map(sup => sup.id === id ? { ...sup, ...supplierData } : sup) }));
+      return;
+    }
+
+    try {
+      // Update the supplier via API
+      const updatedSupplier = await updateSupplierAPI(id, supplierData, token);
+
+      // Update the state with the updated supplier from the API
+      set(s => ({ suppliers: s.suppliers.map(sup => sup.id === id ? updatedSupplier : sup) }));
+    } catch (error) {
+      console.error('Failed to update supplier via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ suppliers: s.suppliers.map(sup => sup.id === id ? { ...sup, ...supplierData } : sup) }));
+      throw error;
+    }
+  },
+  deleteSupplier: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ suppliers: s.suppliers.filter(sup => sup.id !== id) }));
+      return;
+    }
+
+    try {
+      // Delete the supplier via API
+      await deleteSupplierAPI(id, token);
+
+      // Update the state to remove the deleted supplier
+      set(s => ({ suppliers: s.suppliers.filter(sup => sup.id !== id) }));
+    } catch (error) {
+      console.error('Failed to delete supplier via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ suppliers: s.suppliers.filter(sup => sup.id !== id) }));
       throw error;
     }
   },
