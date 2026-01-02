@@ -900,7 +900,7 @@ const convertFrontendSupplierToApi = (frontendSupplier: Partial<Supplier>): any 
  * Get all suppliers API call
  */
 export const getSuppliersAPI = async (token: string): Promise<Supplier[]> => {
-  const response = await fetch('http://localhost:8000/api/suppliers', {
+  const response = await fetch(`${getBaseUrl()}/api/suppliers`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -923,7 +923,7 @@ export const getSuppliersAPI = async (token: string): Promise<Supplier[]> => {
  * Get single supplier API call
  */
 export const getSupplierAPI = async (id: string | number, token: string): Promise<Supplier> => {
-  const response = await fetch(`http://localhost:8000/api/suppliers/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/suppliers/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -950,7 +950,7 @@ export interface CreateSupplierData {
 }
 
 export const createSupplierAPI = async (supplierData: CreateSupplierData, token: string): Promise<Supplier> => {
-  const response = await fetch('http://localhost:8000/api/suppliers', {
+  const response = await fetch(`${getBaseUrl()}/api/suppliers`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -985,7 +985,7 @@ export const updateSupplierAPI = async (id: string | number, supplierData: Parti
     contact: supplierData.contact,
   };
 
-  const response = await fetch(`http://localhost:8000/api/suppliers/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/suppliers/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1016,7 +1016,7 @@ export const updateSupplierAPI = async (id: string | number, supplierData: Parti
  * Delete supplier API call
  */
 export const deleteSupplierAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/suppliers/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/suppliers/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1061,7 +1061,7 @@ const convertApiRfqItemToFrontend = (apiRfqItem: any): any => {
  * Get all RFQ Items API call
  */
 export const getRfqItemsAPI = async (token: string): Promise<any[]> => {
-  const response = await fetch('http://localhost:8000/api/rfq-items', {
+  const response = await fetch(`${getBaseUrl()}/api/rfq-items`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1084,7 +1084,7 @@ export const getRfqItemsAPI = async (token: string): Promise<any[]> => {
  * Get single RFQ Item API call
  */
 export const getRfqItemAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`http://localhost:8000/api/rfq-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/rfq-items/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1113,7 +1113,7 @@ export interface CreateRfqItemData {
 }
 
 export const createRfqItemAPI = async (rfqItemData: CreateRfqItemData, token: string): Promise<any> => {
-  const response = await fetch('http://localhost:8000/api/rfq-items', {
+  const response = await fetch(`${getBaseUrl()}/api/rfq-items`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1150,7 +1150,7 @@ export const updateRfqItemAPI = async (id: string | number, rfqItemData: Partial
     ...(rfqItemData.price !== undefined && { price: rfqItemData.price }),
   };
 
-  const response = await fetch(`http://localhost:8000/api/rfq-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/rfq-items/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1181,7 +1181,7 @@ export const updateRfqItemAPI = async (id: string | number, rfqItemData: Partial
  * Delete RFQ Item API call
  */
 export const deleteRfqItemAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/rfq-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/rfq-items/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1278,7 +1278,7 @@ const convertFrontendPurchaseOrderToApi = (frontendPo: any, isCreate: boolean = 
  * Get all Purchase Orders API call
  */
 export const getPurchaseOrdersAPI = async (token: string): Promise<any[]> => {
-  const response = await fetch('http://localhost:8000/api/purchase-orders', {
+  const response = await fetch(`${getBaseUrl()}/api/purchase-orders`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1301,7 +1301,7 @@ export const getPurchaseOrdersAPI = async (token: string): Promise<any[]> => {
  * Get single Purchase Order API call
  */
 export const getPurchaseOrderAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`http://localhost:8000/api/purchase-orders/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/purchase-orders/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1338,7 +1338,7 @@ export interface CreatePurchaseOrderData {
 }
 
 export const createPurchaseOrderAPI = async (poData: CreatePurchaseOrderData, token: string): Promise<any> => {
-  const response = await fetch('http://localhost:8000/api/purchase-orders', {
+  const response = await fetch(`${getBaseUrl()}/api/purchase-orders`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1381,7 +1381,7 @@ export const updatePurchaseOrderAPI = async (id: string | number, poData: Partia
   if (poData.grandTotal !== undefined) apiPoData.grand_total = poData.grandTotal;
   if (poData.grand_total !== undefined) apiPoData.grand_total = poData.grand_total;
 
-  const response = await fetch(`http://localhost:8000/api/purchase-orders/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/purchase-orders/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1412,7 +1412,7 @@ export const updatePurchaseOrderAPI = async (id: string | number, poData: Partia
  * Delete Purchase Order API call
  */
 export const deletePurchaseOrderAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/purchase-orders/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/purchase-orders/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1470,7 +1470,7 @@ const convertApiPoItemToFrontend = (apiPoItem: any): any => {
  * Get all PO Items API call
  */
 export const getPoItemsAPI = async (token: string): Promise<any[]> => {
-  const response = await fetch('http://localhost:8000/api/po-items', {
+  const response = await fetch(`${getBaseUrl()}/api/po-items`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1493,7 +1493,7 @@ export const getPoItemsAPI = async (token: string): Promise<any[]> => {
  * Get single PO Item API call
  */
 export const getPoItemAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`http://localhost:8000/api/po-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/po-items/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1522,7 +1522,7 @@ export interface CreatePoItemData {
 }
 
 export const createPoItemAPI = async (poItemData: CreatePoItemData, token: string): Promise<any> => {
-  const response = await fetch('http://localhost:8000/api/po-items', {
+  const response = await fetch(`${getBaseUrl()}/api/po-items`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1559,7 +1559,7 @@ export const updatePoItemAPI = async (id: string | number, poItemData: Partial<a
     ...(poItemData.price !== undefined && { price: poItemData.price }),
   };
 
-  const response = await fetch(`http://localhost:8000/api/po-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/po-items/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1590,7 +1590,7 @@ export const updatePoItemAPI = async (id: string | number, poItemData: Partial<a
  * Delete PO Item API call
  */
 export const deletePoItemAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/po-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/po-items/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1669,7 +1669,7 @@ const convertApiReceivingGoodToFrontend = (apiReceivingGood: any): any => {
  * Get all Receiving Goods API call
  */
 export const getReceivingGoodsAPI = async (token: string): Promise<any[]> => {
-  const response = await fetch('http://localhost:8000/api/receiving-goods', {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-goods`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1692,7 +1692,7 @@ export const getReceivingGoodsAPI = async (token: string): Promise<any[]> => {
  * Get single Receiving Good API call
  */
 export const getReceivingGoodAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`http://localhost:8000/api/receiving-goods/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-goods/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1724,7 +1724,7 @@ export interface CreateReceivingGoodData {
 }
 
 export const createReceivingGoodAPI = async (receivingGoodData: CreateReceivingGoodData, token: string): Promise<any> => {
-  const response = await fetch('http://localhost:8000/api/receiving-goods', {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-goods`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1768,7 +1768,7 @@ export const updateReceivingGoodAPI = async (id: string | number, receivingGoodD
     }));
   }
 
-  const response = await fetch(`http://localhost:8000/api/receiving-goods/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-goods/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1799,7 +1799,7 @@ export const updateReceivingGoodAPI = async (id: string | number, receivingGoodD
  * Delete Receiving Good API call
  */
 export const deleteReceivingGoodAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/receiving-goods/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-goods/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1859,7 +1859,7 @@ const convertApiReceivingItemToFrontend = (apiReceivingItem: any): any => {
  * Get all Receiving Items API call
  */
 export const getReceivingItemsAPI = async (token: string): Promise<any[]> => {
-  const response = await fetch('http://localhost:8000/api/receiving-items', {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-items`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1882,7 +1882,7 @@ export const getReceivingItemsAPI = async (token: string): Promise<any[]> => {
  * Get single Receiving Item API call
  */
 export const getReceivingItemAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`http://localhost:8000/api/receiving-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-items/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1910,7 +1910,7 @@ export interface CreateReceivingItemData {
 }
 
 export const createReceivingItemAPI = async (receivingItemData: CreateReceivingItemData, token: string): Promise<any> => {
-  const response = await fetch('http://localhost:8000/api/receiving-items', {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-items`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1946,7 +1946,7 @@ export const updateReceivingItemAPI = async (id: string | number, receivingItemD
     ...(receivingItemData.qty !== undefined && { qty: receivingItemData.qty }),
   };
 
-  const response = await fetch(`http://localhost:8000/api/receiving-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-items/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -1977,7 +1977,7 @@ export const updateReceivingItemAPI = async (id: string | number, receivingItemD
  * Delete Receiving Item API call
  */
 export const deleteReceivingItemAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/receiving-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/receiving-items/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2049,7 +2049,7 @@ const convertFrontendProjectItemToApi = (frontendProjectItem: any): any => {
  * Get all project items API call
  */
 export const getProjectItemsAPI = async (token: string, projectId?: string | number): Promise<any[]> => {
-  let url = 'http://localhost:8000/api/project-items';
+  let url = `${getBaseUrl()}/api/project-items`;
   if (projectId) {
     url += `?project_id=${projectId}`;
   }
@@ -2090,7 +2090,7 @@ export const getProjectItemsAPI = async (token: string, projectId?: string | num
     return projectItemsData.map(convertApiProjectItemToFrontend);
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error('Cannot connect to backend. Is the API server running at http://localhost:8000?');
+      throw new Error(`Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`);
     }
     if (error instanceof Error) {
       throw error;
@@ -2103,7 +2103,7 @@ export const getProjectItemsAPI = async (token: string, projectId?: string | num
  * Get single project item API call
  */
 export const getProjectItemAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`http://localhost:8000/api/project-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/project-items/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2139,7 +2139,7 @@ export interface CreateProjectItemData {
 }
 
 export const createProjectItemAPI = async (projectItemData: CreateProjectItemData, token: string): Promise<any> => {
-  const response = await fetch('http://localhost:8000/api/project-items', {
+  const response = await fetch(`${getBaseUrl()}/api/project-items`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2170,7 +2170,7 @@ export const createProjectItemAPI = async (projectItemData: CreateProjectItemDat
 export const updateProjectItemAPI = async (id: string | number, projectItemData: Partial<any>, token: string): Promise<any> => {
   const apiProjectItemData = convertFrontendProjectItemToApi(projectItemData);
 
-  const response = await fetch(`http://localhost:8000/api/project-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/project-items/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2201,7 +2201,7 @@ export const updateProjectItemAPI = async (id: string | number, projectItemData:
  * Delete project item API call
  */
 export const deleteProjectItemAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/project-items/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/project-items/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2299,7 +2299,7 @@ const convertFrontendMachineToApi = (frontendMachine: any, isCreate: boolean = f
  * Get all machines API call
  */
 export const getMachinesAPI = async (token: string): Promise<any[]> => {
-  const response = await fetch('http://localhost:8000/api/machines', {
+  const response = await fetch(`${getBaseUrl()}/api/machines`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2322,7 +2322,7 @@ export const getMachinesAPI = async (token: string): Promise<any[]> => {
  * Get single machine API call
  */
 export const getMachineAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`http://localhost:8000/api/machines/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/machines/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2353,7 +2353,7 @@ export interface CreateMachineData {
 }
 
 export const createMachineAPI = async (machineData: CreateMachineData, token: string): Promise<any> => {
-  const response = await fetch('http://localhost:8000/api/machines', {
+  const response = await fetch(`${getBaseUrl()}/api/machines`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2395,7 +2395,7 @@ export const updateMachineAPI = async (id: string | number, machineData: Partial
     ...(machineData.is_maintenance !== undefined && { is_maintenance: machineData.is_maintenance }),
   };
 
-  const response = await fetch(`http://localhost:8000/api/machines/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/machines/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2426,7 +2426,7 @@ export const updateMachineAPI = async (id: string | number, machineData: Partial
  * Delete machine API call
  */
 export const deleteMachineAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/machines/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/machines/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -2455,7 +2455,7 @@ export const deleteMachineAPI = async (id: string | number, token: string): Prom
  * Toggle machine maintenance API call
  */
 export const toggleMachineMaintenanceAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`http://localhost:8000/api/machines/${id}/toggle-maintenance`, {
+  const response = await fetch(`${getBaseUrl()}/api/machines/${id}/toggle-maintenance`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,

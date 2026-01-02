@@ -6,10 +6,6 @@ import {
   ASSEMBLY_STEPS
 } from '../types';
 import {
-  MOCK_ITEMS, MOCK_MACHINES, MOCK_TASKS, MOCK_USERS, MOCK_LOGS,
-  MOCK_SUPPLIERS, MOCK_RFQS, MOCK_POS, MOCK_RECEIVINGS, MOCK_DELIVERY_ORDERS
-} from '../lib/mockData';
-import {
   getProjectsAPI,
   createProjectAPI,
   updateProjectAPI,
@@ -53,7 +49,10 @@ import {
   getReceivingItemAPI,
   createReceivingItemAPI,
   updateReceivingItemAPI,
-  deleteReceivingItemAPI
+  deleteReceivingItemAPI,
+  loginAPI,
+  getMachinesAPI,
+  getRfqsAPI
 } from '../lib/api';
 
 interface AppState {
@@ -167,16 +166,16 @@ export const useStore = create<AppState>((set, get) => ({
   token: localStorage.getItem('token') || null,
   projects: [],
   materials: [],
-  items: MOCK_ITEMS,
+  items: [],
   machines: [],
-  tasks: MOCK_TASKS,
+  tasks: [],
   users: [],
-  logs: MOCK_LOGS,
-  suppliers: MOCK_SUPPLIERS,
-  rfqs: MOCK_RFQS,
-  pos: MOCK_POS,
-  receivings: MOCK_RECEIVINGS,
-  deliveryOrders: MOCK_DELIVERY_ORDERS,
+  logs: [],
+  suppliers: [],
+  rfqs: [],
+  pos: [],
+  receivings: [],
+  deliveryOrders: [],
 
   // Initialize data if user is already logged in
   initializeData: async () => {
@@ -185,9 +184,9 @@ export const useStore = create<AppState>((set, get) => ({
       try {
         const projects = await getProjectsAPI(token);
         const materials = await getMaterialsAPI(token);
-        const machines = await import('../lib/api').then(mod => mod.getMachinesAPI(token));
-        const rfqs = await import('../lib/api').then(mod => mod.getRfqsAPI(token));
-        const pos = await import('../lib/api').then(mod => mod.getPurchaseOrdersAPI(token));
+        const machines = await getMachinesAPI(token);
+        const rfqs = await getRfqsAPI(token);
+        const pos = await getPurchaseOrdersAPI(token);
         set({ projects, materials, machines, rfqs, pos });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -226,7 +225,7 @@ export const useStore = create<AppState>((set, get) => ({
   can: (a, m) => true,
   login: async (email, password) => {
     try {
-      const { user, token } = await import('../lib/api').then(mod => mod.loginAPI(email, password));
+      const { user, token } = await loginAPI(email, password);
       set({ currentUser: user, token });
       localStorage.setItem('currentUser', JSON.stringify(user));
       localStorage.setItem('token', token);
@@ -235,7 +234,7 @@ export const useStore = create<AppState>((set, get) => ({
       if (token) {
         try {
           const projects = await getProjectsAPI(token);
-          const machines = await import('../lib/api').then(mod => mod.getMachinesAPI(token));
+          const machines = await getMachinesAPI(token);
           set({ projects, machines });
           // Load materials using the loadMaterials function
           await get().loadMaterials();
@@ -261,10 +260,8 @@ export const useStore = create<AppState>((set, get) => ({
     // Try to call the logout API if we have a token
     const token = get().token;
     if (token) {
-      import('../lib/api').then(mod => {
-        mod.logoutAPI(token).catch(() => {
-          // Logout API failed
-        });
+      logoutAPI(token).catch(() => {
+        // Logout API failed
       });
     }
 
