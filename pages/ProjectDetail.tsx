@@ -9,7 +9,7 @@ import { RAW_STEPS, ASSEMBLY_STEPS, ProcessStep, ItemStepConfig, Project, BomIte
 export const ProjectDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { projects, items, machines, materials, tasks, logs, addProjectItem, deleteProjectItem, validateWorkflow, addSubAssembly, deleteSubAssembly, lockSubAssembly, loadProjectItems, loadSubAssemblies, loadBomItems, addBomItem, updateBomItem, deleteBomItem } = useStore();
+  const { projects, items, machines, materials, tasks, logs, addProjectItem, deleteProjectItem, validateWorkflow, addSubAssembly, deleteSubAssembly, lockSubAssembly, loadProjectItems, loadSubAssemblies, loadBomItems, addBomItem, updateBomItem, deleteBomItem, loadTasks, addTask } = useStore();
 
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState<string | null>(null);
@@ -92,6 +92,8 @@ export const ProjectDetail: React.FC = () => {
           await loadSubAssemblies();
           // Load BOM items for the project
           await loadBomItems(id);
+          // Load tasks for the project
+          await loadTasks(id);
           // Note: loadProjectItems, loadSubAssemblies, and loadBomItems will handle errors gracefully and not throw
         }
       } catch (error) {
@@ -102,7 +104,7 @@ export const ProjectDetail: React.FC = () => {
     };
 
     loadProjectData();
-  }, [id, projects, loadProjectItems, loadSubAssemblies, loadBomItems]);
+  }, [id, projects, loadProjectItems, loadSubAssemblies, loadBomItems, loadTasks]);
 
   // Update project progress when tasks change
   useEffect(() => {
@@ -111,7 +113,7 @@ export const ProjectDetail: React.FC = () => {
     }, 1000);
 
     return () => clearTimeout(progressUpdateTimer);
-  }, [tasks, project?.id, id]);
+  }, [tasks, project?.id, id, loadTasks]);
 
   const stats = useMemo(() => {
     const totalTarget = project?.totalQty || 0;
@@ -167,8 +169,8 @@ export const ProjectDetail: React.FC = () => {
       // Calculate total needed based on item quantity and qtyPerParent
       const totalNeeded = item.quantity * newSub.qtyPerParent;
 
-      // Add the sub-assembly
-      await addSubAssembly(itemId, {
+      // Add the sub-assembly and get the created sub-assembly with its actual ID
+      const createdSubAssembly = await addSubAssembly(itemId, {
         id: `sa-${Date.now()}`,
         name: newSub.name || '',
         qtyPerParent: newSub.qtyPerParent || 1,
@@ -194,9 +196,61 @@ export const ProjectDetail: React.FC = () => {
 
       await addBomItem(bomItemData);
 
+      // Create tasks for each process in the sub-assembly using the actual sub-assembly ID
+      const project = projects.find(p => p.id === id);
+      if (project && Array.isArray(newSub.processes)) {
+        for (const process of newSub.processes) {
+          const taskData = {
+            projectId: project.id,
+            projectName: project.name,
+            itemId: item.id,
+            itemName: item.name,
+            subAssemblyId: createdSubAssembly.id,
+            subAssemblyName: createdSubAssembly.name,
+            step: process,
+            targetQty: totalNeeded,
+            completedQty: 0,
+            defectQty: 0,
+            status: 'PENDING' as const,
+            totalDowntimeMinutes: 0
+          };
+
+          // Add the task to the store (which will also create it via API if token exists)
+          await addTask(taskData);
+        }
+      }
+
+      // Automatically create tasks for LASPEN, LASMIG, PHOSPHATING, CAT, and PACKING when a sub-assembly is created
+      const autoProcesses = ['LASPEN', 'LASMIG', 'PHOSPHATING', 'CAT', 'PACKING'];
+      if (project) {
+        for (const process of autoProcesses) {
+          const taskData = {
+            projectId: project.id,
+            projectName: project.name,
+            itemId: item.id,
+            itemName: item.name,
+            subAssemblyId: createdSubAssembly.id,
+            subAssemblyName: createdSubAssembly.name,
+            step: process,
+            targetQty: totalNeeded,
+            completedQty: 0,
+            defectQty: 0,
+            status: 'PENDING' as const,
+            totalDowntimeMinutes: 0
+          };
+
+          // Add the task to the store (which will also create it via API if token exists)
+          await addTask(taskData);
+        }
+      }
+
       // Reload BOM items after adding
       if (id) {
         await loadBomItems(id);
+        // Reload sub assemblies to get the new one with its actual ID from the API
+        await loadSubAssemblies(itemId);
+        // Reload tasks to reflect any new tasks
+        await loadTasks(id);
       }
 
       setNewSub({
@@ -354,14 +408,12 @@ export const ProjectDetail: React.FC = () => {
                      <h4 className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-3"><Component size={14}/> MONITORING RAKITAN (BAHAN MENTAH)</h4>
                    </div>
                    <div className="border rounded-[40px] overflow-hidden bg-white shadow-sm overflow-x-auto custom-scrollbar">
-                     <table className="w-full text-left text-xs min-w-[1000px]">
+                     <table className="w-full text-left text-xs min-w-[800px]">
                        <thead className="bg-slate-50 text-slate-400 font-black uppercase tracking-widest border-b">
                          <tr>
                            <th className="px-8 py-5">Komponen</th>
                            <th className="px-8 py-5 text-center">Qty/Unit</th>
                            <th className="px-8 py-5 text-center">Total Perlu</th>
-                           <th className="px-8 py-5 text-center">Alokasi</th>
-                           <th className="px-8 py-5 text-center">Realisasi</th>
                            {RAW_STEPS.map(s => <th key={s} className="px-8 py-5 text-center">{s} <br/><span className="text-[8px] opacity-60">(Hasil / Sedia)</span></th>)}
                            <th className="px-8 py-5 text-center bg-emerald-50/50">Stok Jadi <br/><span className="text-[8px] opacity-60">(Siap Las)</span></th>
                            <th className="px-8 py-5 text-right">Aksi</th>
@@ -375,12 +427,6 @@ export const ProjectDetail: React.FC = () => {
                                <td className="px-8 py-6 uppercase font-black text-slate-900">{sa.name} {correspondingBomItem && <span className="text-[8px] font-black text-amber-600 ml-2">(Generated)</span>}</td>
                                <td className="px-8 py-6 text-center text-slate-400">{sa.qtyPerParent}</td>
                                <td className="px-8 py-6 text-center text-slate-900 font-black">{sa.totalNeeded}</td>
-                               <td className="px-8 py-6 text-center text-slate-900 font-black">
-                                 {correspondingBomItem ? correspondingBomItem.allocated : 0}
-                               </td>
-                               <td className="px-8 py-6 text-center text-slate-900 font-black">
-                                 {correspondingBomItem ? correspondingBomItem.realized : 0}
-                               </td>
                                {RAW_STEPS.map((s) => {
                                  const isIncluded = Array.isArray(sa.processes) ? sa.processes.some(p => (typeof p === 'string' ? p : p.name || p.step || String(p)) === s) : false;
                                  const stats = sa.stepStats[s] || { produced: 0, available: 0 };
@@ -413,8 +459,6 @@ export const ProjectDetail: React.FC = () => {
                                <td className="px-8 py-6 uppercase font-black text-slate-900">{material?.name || 'BOM Item'} <span className="text-[8px] font-black text-blue-600 ml-2">(Direct)</span></td>
                                <td className="px-8 py-6 text-center text-slate-400">{bomItem.quantityPerUnit}</td>
                                <td className="px-8 py-6 text-center text-slate-900 font-black">{bomItem.totalRequired}</td>
-                               <td className="px-8 py-6 text-center text-slate-900 font-black">{bomItem.allocated}</td>
-                               <td className="px-8 py-6 text-center text-slate-900 font-black">{bomItem.realized}</td>
                                {RAW_STEPS.map((s, idx) => (
                                  <td key={s} className="px-8 py-6 text-center">
                                    {idx === 0 ? (
@@ -690,6 +734,8 @@ export const ProjectDetail: React.FC = () => {
                        const token = localStorage.getItem('token');
                        if (token) {
                          await updateProjectAPI(project.id, { status: 'IN_PROGRESS' }, token);
+                         // Reload tasks after workflow validation to ensure they're up to date
+                         await loadTasks(project.id);
                        }
                      }
 

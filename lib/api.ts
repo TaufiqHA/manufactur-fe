@@ -3422,3 +3422,415 @@ export const deleteBomItemAPI = async (
   }
 };
 
+/**
+ * Convert API response field names to frontend field names for Task
+ */
+const convertApiTaskToFrontend = (apiTask: any): any => {
+  return {
+    id: apiTask.id?.toString(),
+    project_id: apiTask.project_id?.toString(),
+    project_name: apiTask.project_name,
+    item_id: apiTask.item_id?.toString(),
+    item_name: apiTask.item_name,
+    sub_assembly_id: apiTask.sub_assembly_id?.toString(),
+    sub_assembly_name: apiTask.sub_assembly_name,
+    step: apiTask.step,
+    machine_id: apiTask.machine_id?.toString(),
+    target_qty: apiTask.target_qty || 0,
+    daily_target: apiTask.daily_target || 0,
+    completed_qty: apiTask.completed_qty || 0,
+    defect_qty: apiTask.defect_qty || 0,
+    status: apiTask.status,
+    note: apiTask.note || "",
+    total_downtime_minutes: apiTask.total_downtime_minutes || 0,
+    created_at: apiTask.created_at,
+    updated_at: apiTask.updated_at,
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for Task
+ */
+const convertFrontendTaskToApi = (
+  frontendTask: any,
+  isCreate: boolean = false
+): any => {
+  const apiTask: any = {
+    project_id: frontendTask.project_id || frontendTask.projectId,
+    project_name: frontendTask.project_name || frontendTask.projectName,
+    item_id: frontendTask.item_id || frontendTask.itemId,
+    item_name: frontendTask.item_name || frontendTask.itemName,
+    sub_assembly_id: frontendTask.sub_assembly_id || frontendTask.subAssemblyId,
+    sub_assembly_name: frontendTask.sub_assembly_name || frontendTask.subAssemblyName,
+    step: frontendTask.step,
+    machine_id: frontendTask.machine_id || frontendTask.machineId,
+    target_qty: frontendTask.target_qty || frontendTask.targetQty,
+    daily_target: frontendTask.daily_target || frontendTask.dailyTarget,
+    completed_qty: frontendTask.completed_qty || frontendTask.completedQty,
+    defect_qty: frontendTask.defect_qty || frontendTask.defectQty,
+    status: frontendTask.status,
+    note: frontendTask.note,
+    total_downtime_minutes: frontendTask.total_downtime_minutes || frontendTask.totalDowntimeMinutes,
+  };
+
+  // Only include id if it's not for creation
+  if (!isCreate && frontendTask.id) {
+    apiTask.id = frontendTask.id;
+  }
+
+  return apiTask;
+};
+
+/**
+ * Get all tasks API call
+ */
+export const getTasksAPI = async (
+  token: string,
+  projectId?: string | number
+): Promise<any[]> => {
+  let url = `${getBaseUrl()}/api/tasks`;
+  if (projectId) {
+    url += `?project_id=${projectId}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      let errorData: any = {};
+      let responseText = "";
+
+      try {
+        responseText = await response.text();
+        errorData = JSON.parse(responseText);
+      } catch (e) {
+        errorData = { message: responseText || "Unknown error" };
+      }
+
+      const errorMessage =
+        errorData.message ||
+        (errorData.errors &&
+          Object.values(errorData.errors).flat().join(", ")) ||
+        `Failed to fetch tasks (${response.status})`;
+
+      throw new Error(errorMessage);
+    }
+
+    const apiResponse = await response.json();
+
+    // Handle both paginated and array responses
+    const tasksData = Array.isArray(apiResponse.data)
+      ? apiResponse.data
+      : apiResponse.data?.data || apiResponse.data || [];
+    return tasksData.map(convertApiTaskToFrontend);
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      throw new Error(
+        `Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`
+      );
+    }
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Get single task API call
+ */
+export const getTaskAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
+  const response = await fetch(`${getBaseUrl()}/api/tasks/${id}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.message || `Failed to fetch task with ID: ${id}`
+    );
+  }
+
+  const apiTask = await response.json();
+  return convertApiTaskToFrontend(apiTask);
+};
+
+/**
+ * Create task API call
+ */
+export interface CreateTaskData {
+  project_id: string | number;
+  project_name: string;
+  item_id: string | number;
+  item_name: string;
+  step: string;
+  target_qty: number;
+  status: string;
+  sub_assembly_id?: string | number;
+  sub_assembly_name?: string;
+  machine_id?: string | number;
+  daily_target?: number;
+  completed_qty?: number;
+  defect_qty?: number;
+  note?: string;
+  total_downtime_minutes?: number;
+}
+
+export const createTaskAPI = async (
+  taskData: CreateTaskData,
+  token: string
+): Promise<any> => {
+  const response = await fetch(`${getBaseUrl()}/api/tasks`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(convertFrontendTaskToApi(taskData, true)),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to create task");
+    }
+  }
+
+  const createdTask = await response.json();
+  return convertApiTaskToFrontend(
+    createdTask.data || createdTask
+  );
+};
+
+/**
+ * Update task API call
+ */
+export const updateTaskAPI = async (
+  id: string | number,
+  taskData: Partial<any>,
+  token: string
+): Promise<any> => {
+  const apiTaskData = convertFrontendTaskToApi(taskData);
+
+  const response = await fetch(`${getBaseUrl()}/api/tasks/${id}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(apiTaskData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else if (response.status === 404) {
+      throw new Error("Task not found");
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to update task");
+    }
+  }
+
+  const updatedTask = await response.json();
+  return convertApiTaskToFrontend(
+    updatedTask.data || updatedTask
+  );
+};
+
+/**
+ * Delete task API call
+ */
+export const deleteTaskAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
+  const response = await fetch(`${getBaseUrl()}/api/tasks/${id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error("Task not found");
+    } else {
+      throw new Error(errorData.message || "Failed to delete task");
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || "Failed to delete task");
+  }
+};
+
+/**
+ * Update task status API call
+ */
+export const updateTaskStatusAPI = async (
+  id: string | number,
+  status: string,
+  token: string
+): Promise<any> => {
+  const response = await fetch(`${getBaseUrl()}/api/tasks/${id}/status`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status }),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else if (response.status === 404) {
+      throw new Error("Task not found");
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to update task status");
+    }
+  }
+
+  const updatedTask = await response.json();
+  return convertApiTaskToFrontend(
+    updatedTask.data || updatedTask
+  );
+};
+
+/**
+ * Update task completion API call
+ */
+export const updateTaskCompletionAPI = async (
+  id: string | number,
+  completed_qty: number,
+  defect_qty?: number,
+  token: string
+): Promise<any> => {
+  const requestBody: any = { completed_qty };
+  if (defect_qty !== undefined) {
+    requestBody.defect_qty = defect_qty;
+  }
+
+  const response = await fetch(`${getBaseUrl()}/api/tasks/${id}/completion`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else if (response.status === 404) {
+      throw new Error("Task not found");
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to update task completion");
+    }
+  }
+
+  const updatedTask = await response.json();
+  return convertApiTaskToFrontend(
+    updatedTask.data || updatedTask
+  );
+};
+
+/**
+ * Update task downtime API call
+ */
+export const updateTaskDowntimeAPI = async (
+  id: string | number,
+  total_downtime_minutes: number,
+  note?: string,
+  token: string
+): Promise<any> => {
+  const requestBody: any = { total_downtime_minutes };
+  if (note !== undefined) {
+    requestBody.note = note;
+  }
+
+  const response = await fetch(`${getBaseUrl()}/api/tasks/${id}/downtime`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else if (response.status === 404) {
+      throw new Error("Task not found");
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to update task downtime");
+    }
+  }
+
+  const updatedTask = await response.json();
+  return convertApiTaskToFrontend(
+    updatedTask.data || updatedTask
+  );
+};
+

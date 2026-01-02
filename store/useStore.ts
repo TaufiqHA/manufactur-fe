@@ -21,7 +21,14 @@ import {
   getBomItemsAPI,
   createBomItemAPI,
   updateBomItemAPI,
-  deleteBomItemAPI
+  deleteBomItemAPI,
+  getTasksAPI,
+  createTaskAPI,
+  updateTaskAPI,
+  deleteTaskAPI,
+  updateTaskStatusAPI,
+  updateTaskCompletionAPI,
+  updateTaskDowntimeAPI
 } from '../lib/api';
 
 // Import supplier API functions
@@ -467,7 +474,7 @@ export const useStore = create<AppState>((set, get) => ({
       set(s => ({
         items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: [...i.subAssemblies, { ...sa, stepStats: {} }] } : i)
       }));
-      return;
+      return { ...sa, stepStats: {} }; // Return the created sub-assembly
     }
 
     try {
@@ -493,13 +500,15 @@ export const useStore = create<AppState>((set, get) => ({
       set(s => ({
         items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: [...i.subAssemblies, createdSubAssembly] } : i)
       }));
+
+      return createdSubAssembly; // Return the created sub-assembly
     } catch (error) {
       console.error('Failed to create sub assembly via API:', error);
       // Fallback to local state if API fails
       set(s => ({
         items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: [...i.subAssemblies, { ...sa, stepStats: {} }] } : i)
       }));
-      throw error;
+      return { ...sa, stepStats: {} }; // Return the fallback sub-assembly
     }
   },
 
@@ -570,10 +579,12 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  validateWorkflow: (itemId, workflow) => set((state) => {
+  validateWorkflow: async (itemId, workflow) => {
+    const token = get().token;
+    const state = get();
     const item = state.items.find(i => i.id === itemId);
     const project = state.projects.find(p => p.id === item?.projectId);
-    if (!item || !project) return state;
+    if (!item || !project) return;
 
     const newTasks: Task[] = [];
 
@@ -601,23 +612,54 @@ export const useStore = create<AppState>((set, get) => ({
       });
     });
 
-    return {
+    // Update the store with the new workflow and tasks
+    set({
       items: state.items.map(i => i.id === itemId ? { ...i, isWorkflowLocked: true, workflow } : i),
       tasks: [...state.tasks.filter(t => t.itemId !== itemId), ...newTasks]
-    };
-  }),
+    });
+
+    // If we have a token, create tasks via API
+    if (token) {
+      for (const task of newTasks) {
+        try {
+          await createTaskAPI({
+            project_id: task.projectId,
+            project_name: task.projectName,
+            item_id: task.itemId,
+            item_name: task.itemName,
+            sub_assembly_id: task.subAssemblyId,
+            sub_assembly_name: task.subAssemblyName,
+            step: task.step,
+            machine_id: task.machineId,
+            target_qty: task.targetQty,
+            daily_target: task.dailyTarget,
+            completed_qty: task.completedQty,
+            defect_qty: task.defectQty,
+            status: task.status,
+            note: task.note,
+            total_downtime_minutes: task.totalDowntimeMinutes
+          }, token);
+        } catch (error) {
+          console.error('Failed to create task via API:', error);
+          // Continue with other tasks even if one fails
+        }
+      }
+    }
+  },
 
   unlockWorkflow: (itemId) => set(s => ({
     items: s.items.map(i => i.id === itemId ? { ...i, isWorkflowLocked: false } : i),
     tasks: s.tasks.filter(t => t.itemId !== itemId)
   })),
 
-  reportProduction: (taskId, goodQty, defectQty, shift, operator) => set((state) => {
+  reportProduction: async (taskId, goodQty, defectQty, shift, operator) => {
+    const token = get().token;
+    const state = get();
     const task = state.tasks.find(t => t.id === taskId);
-    if (!task) return state;
+    if (!task) return;
 
     const item = state.items.find(i => i.id === task.itemId);
-    if (!item) return state;
+    if (!item) return;
 
     let updatedItems = [...state.items];
     const totalConsumed = goodQty + defectQty;
@@ -698,7 +740,8 @@ export const useStore = create<AppState>((set, get) => ({
       });
     }
 
-    return {
+    // Update the store first
+    set({
       items: updatedItems,
       tasks: state.tasks.map(t => t.id === taskId ? {
         ...t, completedQty: t.completedQty + goodQty, defectQty: t.defectQty + defectQty,
@@ -708,35 +751,122 @@ export const useStore = create<AppState>((set, get) => ({
         id: `log-${Date.now()}`, taskId, machineId: task.machineId, itemId: task.itemId, subAssemblyId: task.subAssemblyId,
         projectId: task.projectId, step: task.step, shift, goodQty, defectQty, operator, timestamp: new Date().toISOString(), type: 'OUTPUT'
       }, ...state.logs]
-    };
-  }),
+    });
 
-  setTaskStatus: (taskId, status) => set(s => ({
-    tasks: s.tasks.map(t => t.id === taskId ? { ...t, status } : t),
-    machines: s.machines.map(m => {
-      const task = s.tasks.find(x => x.id === taskId);
-      if (m.id === task?.machineId) return { ...m, status: status === 'IN_PROGRESS' ? 'RUNNING' : 'IDLE' };
-      return m;
-    })
-  })),
+    // If we have a token, update via API
+    if (token) {
+      try {
+        await updateTaskCompletionAPI(taskId, task.completedQty + goodQty, task.defectQty + defectQty, token);
+      } catch (error) {
+        console.error('Failed to report production via API:', error);
+        // Revert the change if API fails
+        set(s => ({
+          items: state.items,
+          tasks: state.tasks,
+          logs: state.logs.filter(log => !log.id.includes('log-'))
+        }));
+      }
+    }
+  },
 
-  startDowntime: (taskId) => set(s => ({
-    tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: 'DOWNTIME' } : t),
-    machines: s.machines.map(m => {
-      const task = s.tasks.find(x => x.id === taskId);
-      if (m.id === task?.machineId) return { ...m, status: 'DOWNTIME' };
-      return m;
-    })
-  })),
+  setTaskStatus: async (taskId, status) => {
+    const token = get().token;
+    const state = get();
 
-  endDowntime: (taskId) => set(s => ({
-    tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: 'IN_PROGRESS', totalDowntimeMinutes: (t.totalDowntimeMinutes || 0) + 10 } : t),
-    machines: s.machines.map(m => {
-      const task = s.tasks.find(x => x.id === taskId);
-      if (m.id === task?.machineId) return { ...m, status: 'RUNNING' };
-      return m;
-    })
-  })),
+    // Update the store first
+    set(s => ({
+      tasks: s.tasks.map(t => t.id === taskId ? { ...t, status } : t),
+      machines: s.machines.map(m => {
+        const task = s.tasks.find(x => x.id === taskId);
+        if (m.id === task?.machineId) return { ...m, status: status === 'IN_PROGRESS' ? 'RUNNING' : 'IDLE' };
+        return m;
+      })
+    }));
+
+    // If we have a token, update via API
+    if (token) {
+      try {
+        await updateTaskStatusAPI(taskId, status, token);
+      } catch (error) {
+        console.error('Failed to update task status via API:', error);
+        // Revert the change if API fails
+        set(s => ({
+          tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: state.tasks.find(x => x.id === taskId)?.status || t.status } : t),
+          machines: s.machines.map(m => {
+            const task = s.tasks.find(x => x.id === taskId);
+            if (m.id === task?.machineId) return { ...m, status: state.machines.find(x => x.id === m.id)?.status || m.status };
+            return m;
+          })
+        }));
+      }
+    }
+  },
+
+  startDowntime: async (taskId) => {
+    const token = get().token;
+    const state = get();
+
+    // Update the store first
+    set(s => ({
+      tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: 'DOWNTIME' } : t),
+      machines: s.machines.map(m => {
+        const task = s.tasks.find(x => x.id === taskId);
+        if (m.id === task?.machineId) return { ...m, status: 'DOWNTIME' };
+        return m;
+      })
+    }));
+
+    // If we have a token, update via API
+    if (token) {
+      try {
+        await updateTaskStatusAPI(taskId, 'DOWNTIME', token);
+      } catch (error) {
+        console.error('Failed to start downtime via API:', error);
+        // Revert the change if API fails
+        set(s => ({
+          tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: state.tasks.find(x => x.id === taskId)?.status || t.status } : t),
+          machines: s.machines.map(m => {
+            const task = s.tasks.find(x => x.id === taskId);
+            if (m.id === task?.machineId) return { ...m, status: state.machines.find(x => x.id === m.id)?.status || m.status };
+            return m;
+          })
+        }));
+      }
+    }
+  },
+
+  endDowntime: async (taskId) => {
+    const token = get().token;
+    const state = get();
+
+    // Update the store first
+    set(s => ({
+      tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: 'IN_PROGRESS', totalDowntimeMinutes: (t.totalDowntimeMinutes || 0) + 10 } : t),
+      machines: s.machines.map(m => {
+        const task = s.tasks.find(x => x.id === taskId);
+        if (m.id === task?.machineId) return { ...m, status: 'RUNNING' };
+        return m;
+      })
+    }));
+
+    // If we have a token, update via API
+    if (token) {
+      try {
+        await updateTaskDowntimeAPI(taskId, (state.tasks.find(t => t.id === taskId)?.totalDowntimeMinutes || 0) + 10, undefined, token);
+      } catch (error) {
+        console.error('Failed to end downtime via API:', error);
+        // Revert the change if API fails
+        set(s => ({
+          tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: state.tasks.find(x => x.id === taskId)?.status || t.status, totalDowntimeMinutes: state.tasks.find(x => x.id === taskId)?.totalDowntimeMinutes || t.totalDowntimeMinutes } : t),
+          machines: s.machines.map(m => {
+            const task = s.tasks.find(x => x.id === taskId);
+            if (m.id === task?.machineId) return { ...m, status: state.machines.find(x => x.id === m.id)?.status || m.status };
+            return m;
+          })
+        }));
+      }
+    }
+  },
 
   addProject: async (p) => {
     const token = get().token;
@@ -1980,6 +2110,169 @@ export const useStore = create<AppState>((set, get) => ({
       await deleteBomItemAPI(id, token);
     } catch (error) {
       console.error('Failed to delete BOM item via API:', error);
+      throw error;
+    }
+  },
+
+  // Task functions
+  loadTasks: async (projectId?) => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const tasks = await getTasksAPI(token, projectId);
+      // Update the store with tasks from the API
+      set({ tasks });
+    } catch (error) {
+      console.error('Failed to load tasks from API:', error);
+      throw error;
+    }
+  },
+  addTask: async (task) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ tasks: [...s.tasks, task] }));
+      return;
+    }
+
+    try {
+      // Format the task data for the API
+      const taskData = {
+        project_id: task.projectId,
+        project_name: task.projectName,
+        item_id: task.itemId,
+        item_name: task.itemName,
+        sub_assembly_id: task.subAssemblyId,
+        sub_assembly_name: task.subAssemblyName,
+        step: task.step,
+        machine_id: task.machineId,
+        target_qty: task.targetQty,
+        daily_target: task.dailyTarget,
+        completed_qty: task.completedQty,
+        defect_qty: task.defectQty,
+        status: task.status,
+        note: task.note,
+        total_downtime_minutes: task.totalDowntimeMinutes
+      };
+
+      // Create the task via API
+      const createdTask = await createTaskAPI(taskData, token);
+
+      // Update the state with the created task from the API (which may have additional fields)
+      set(s => ({ tasks: [...s.tasks, createdTask] }));
+    } catch (error) {
+      console.error('Failed to create task via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ tasks: [...s.tasks, task] }));
+      throw error;
+    }
+  },
+  updateTask: async (id, taskData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, ...taskData } : t) }));
+      return;
+    }
+
+    try {
+      // Update the task via API
+      const updatedTask = await updateTaskAPI(id, taskData, token);
+
+      // Update the state with the updated task from the API
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? updatedTask : t) }));
+    } catch (error) {
+      console.error('Failed to update task via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, ...taskData } : t) }));
+      throw error;
+    }
+  },
+  deleteTask: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+      return;
+    }
+
+    try {
+      // Delete the task via API
+      await deleteTaskAPI(id, token);
+
+      // Update the state to remove the deleted task
+      set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+    } catch (error) {
+      console.error('Failed to delete task via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+      throw error;
+    }
+  },
+  updateTaskStatus: async (id, status) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, status } : t) }));
+      return;
+    }
+
+    try {
+      // Update the task status via API
+      const updatedTask = await updateTaskStatusAPI(id, status, token);
+
+      // Update the state with the updated task from the API
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? updatedTask : t) }));
+    } catch (error) {
+      console.error('Failed to update task status via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, status } : t) }));
+      throw error;
+    }
+  },
+  updateTaskCompletion: async (id, completed_qty, defect_qty) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, completedQty: completed_qty, defectQty: defect_qty } : t) }));
+      return;
+    }
+
+    try {
+      // Update the task completion via API
+      const updatedTask = await updateTaskCompletionAPI(id, completed_qty, defect_qty, token);
+
+      // Update the state with the updated task from the API
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? updatedTask : t) }));
+    } catch (error) {
+      console.error('Failed to update task completion via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, completedQty: completed_qty, defectQty: defect_qty } : t) }));
+      throw error;
+    }
+  },
+  updateTaskDowntime: async (id, total_downtime_minutes, note) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, totalDowntimeMinutes: total_downtime_minutes, note } : t) }));
+      return;
+    }
+
+    try {
+      // Update the task downtime via API
+      const updatedTask = await updateTaskDowntimeAPI(id, total_downtime_minutes, note, token);
+
+      // Update the state with the updated task from the API
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? updatedTask : t) }));
+    } catch (error) {
+      console.error('Failed to update task downtime via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ tasks: s.tasks.map(t => t.id === id ? { ...t, totalDowntimeMinutes: total_downtime_minutes, note } : t) }));
       throw error;
     }
   }

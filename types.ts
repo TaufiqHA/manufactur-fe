@@ -29,9 +29,9 @@ export interface Material {
   category: 'RAW' | 'FINISHING' | 'HARDWARE';
 }
 
-export type ProcessStep = 'POTONG' | 'PLONG' | 'PRESS' | 'LAS' | 'PHOSPHATING' | 'CAT' | 'PACKING';
+export type ProcessStep = 'POTONG' | 'PLONG' | 'PRESS' | 'LAS' | 'LASPEN' | 'LASMIG' | 'PHOSPHATING' | 'CAT' | 'PACKING';
 export const RAW_STEPS: ProcessStep[] = ['POTONG', 'PLONG', 'PRESS'];
-export const ASSEMBLY_STEPS: ProcessStep[] = ['LAS', 'PHOSPHATING', 'CAT', 'PACKING'];
+export const ASSEMBLY_STEPS: ProcessStep[] = ['LAS', 'LASPEN', 'LASMIG', 'PHOSPHATING', 'CAT', 'PACKING'];
 export const ALL_STEPS: ProcessStep[] = [...RAW_STEPS, ...ASSEMBLY_STEPS];
 
 export interface SubAssembly {
