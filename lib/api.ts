@@ -1193,3 +1193,410 @@ export const deleteRfqItemAPI = async (id: string | number, token: string): Prom
     throw new Error(errorData.message || 'Failed to delete RFQ item');
   }
 };
+
+/**
+ * Convert API response field names to frontend field names for Purchase Order
+ */
+const convertApiPurchaseOrderToFrontend = (apiPo: any): any => {
+  return {
+    id: apiPo.id?.toString(),
+    code: apiPo.code,
+    date: apiPo.date,
+    supplierId: apiPo.supplier_id?.toString(),
+    rfq_id: apiPo.rfq_id?.toString(),
+    description: apiPo.description,
+    status: apiPo.status,
+    grandTotal: parseFloat(apiPo.grand_total) || 0,
+    created_at: apiPo.created_at,
+    updated_at: apiPo.updated_at,
+    items: Array.isArray(apiPo.poItems) ? apiPo.poItems.map((item: any) => ({
+      id: item.id?.toString(),
+      po_id: item.po_id?.toString(),
+      material_id: item.material_id?.toString(),
+      name: item.name,
+      qty: item.qty,
+      price: parseFloat(item.price) || 0,
+      created_at: item.created_at,
+      updated_at: item.updated_at
+    })) : [],
+    supplier: apiPo.supplier ? {
+      id: apiPo.supplier.id?.toString(),
+      name: apiPo.supplier.name,
+      address: apiPo.supplier.address,
+      contact: apiPo.supplier.contact,
+    } : undefined,
+    rfq: apiPo.rfq ? {
+      id: apiPo.rfq.id?.toString(),
+      code: apiPo.rfq.code,
+      date: apiPo.rfq.date,
+      description: apiPo.rfq.description,
+      status: apiPo.rfq.status,
+    } : undefined
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for Purchase Order
+ */
+const convertFrontendPurchaseOrderToApi = (frontendPo: any, isCreate: boolean = false): any => {
+  const apiPo: any = {
+    code: frontendPo.code,
+    date: frontendPo.date,
+    supplier_id: frontendPo.supplierId,
+    rfq_id: frontendPo.rfq_id,
+    description: frontendPo.description,
+    status: frontendPo.status,
+    grand_total: frontendPo.grandTotal,
+  };
+
+  // Only include items if they exist and it's a create operation
+  if (isCreate && frontendPo.items && Array.isArray(frontendPo.items)) {
+    apiPo.po_items = frontendPo.items.map((item: any) => ({
+      material_id: item.material_id || item.materialId,
+      name: item.name,
+      qty: item.qty,
+      price: item.price
+    }));
+  }
+
+  return apiPo;
+};
+
+/**
+ * Get all Purchase Orders API call
+ */
+export const getPurchaseOrdersAPI = async (token: string): Promise<any[]> => {
+  const response = await fetch('http://localhost:8000/api/purchase-orders', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch purchase orders');
+  }
+
+  const apiResponse = await response.json();
+  // Handle both array response and paginated response
+  const posData = Array.isArray(apiResponse.data) ? apiResponse.data : (apiResponse.data?.data || apiResponse.data || []);
+  return posData.map(convertApiPurchaseOrderToFrontend);
+};
+
+/**
+ * Get single Purchase Order API call
+ */
+export const getPurchaseOrderAPI = async (id: string | number, token: string): Promise<any> => {
+  const response = await fetch(`http://localhost:8000/api/purchase-orders/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch purchase order with ID: ${id}`);
+  }
+
+  const apiPo = await response.json();
+  return convertApiPurchaseOrderToFrontend(apiPo);
+};
+
+/**
+ * Create Purchase Order API call
+ */
+export interface CreatePurchaseOrderData {
+  code: string;
+  date: string;
+  supplier_id: string | number;
+  rfq_id: string | number;
+  description: string;
+  status: 'OPEN' | 'RECEIVED';
+  grand_total: number;
+  po_items: {
+    material_id: string | number;
+    name: string;
+    qty: number;
+    price?: number;
+  }[];
+}
+
+export const createPurchaseOrderAPI = async (poData: CreatePurchaseOrderData, token: string): Promise<any> => {
+  const response = await fetch('http://localhost:8000/api/purchase-orders', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(poData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create purchase order');
+    }
+  }
+
+  const createdPo = await response.json();
+  return convertApiPurchaseOrderToFrontend(createdPo);
+};
+
+/**
+ * Update Purchase Order API call
+ */
+export const updatePurchaseOrderAPI = async (id: string | number, poData: Partial<any>, token: string): Promise<any> => {
+  const apiPoData: any = {
+    ...(poData.code !== undefined && { code: poData.code }),
+    ...(poData.date !== undefined && { date: poData.date }),
+    ...(poData.supplierId !== undefined && { supplier_id: poData.supplierId }),
+    ...(poData.supplier_id !== undefined && { supplier_id: poData.supplier_id }),
+    ...(poData.rfq_id !== undefined && { rfq_id: poData.rfq_id }),
+    ...(poData.description !== undefined && { description: poData.description }),
+    ...(poData.status !== undefined && { status: poData.status }),
+    ...(poData.grandTotal !== undefined && { grand_total: poData.grandTotal }),
+    ...(poData.grand_total !== undefined && { grand_total: poData.grand_total }),
+  };
+
+  const response = await fetch(`http://localhost:8000/api/purchase-orders/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiPoData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('Purchase order not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update purchase order');
+    }
+  }
+
+  const updatedPo = await response.json();
+  return convertApiPurchaseOrderToFrontend(updatedPo);
+};
+
+/**
+ * Delete Purchase Order API call
+ */
+export const deletePurchaseOrderAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/purchase-orders/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('Purchase order not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete purchase order');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete purchase order');
+  }
+};
+
+/**
+ * Convert API response field names to frontend field names for PO Item
+ */
+const convertApiPoItemToFrontend = (apiPoItem: any): any => {
+  return {
+    id: apiPoItem.id?.toString(),
+    po_id: apiPoItem.po_id?.toString(),
+    material_id: apiPoItem.material_id?.toString(),
+    name: apiPoItem.name,
+    qty: apiPoItem.qty,
+    price: parseFloat(apiPoItem.price) || 0,
+    created_at: apiPoItem.created_at,
+    updated_at: apiPoItem.updated_at,
+    purchaseOrder: apiPoItem.purchaseOrder ? {
+      id: apiPoItem.purchaseOrder.id?.toString(),
+      code: apiPoItem.purchaseOrder.code,
+      date: apiPoItem.purchaseOrder.date,
+      supplier_id: apiPoItem.purchaseOrder.supplier_id?.toString(),
+      description: apiPoItem.purchaseOrder.description,
+      status: apiPoItem.purchaseOrder.status,
+      grand_total: parseFloat(apiPoItem.purchaseOrder.grand_total) || 0,
+    } : undefined,
+    material: apiPoItem.material ? {
+      id: apiPoItem.material.id?.toString(),
+      name: apiPoItem.material.name,
+    } : undefined
+  };
+};
+
+/**
+ * Get all PO Items API call
+ */
+export const getPoItemsAPI = async (token: string): Promise<any[]> => {
+  const response = await fetch('http://localhost:8000/api/po-items', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch PO items');
+  }
+
+  const apiResponse = await response.json();
+  // Handle both array response and paginated response
+  const poItemsData = Array.isArray(apiResponse.data) ? apiResponse.data : (apiResponse.data?.data || apiResponse.data || []);
+  return poItemsData.map(convertApiPoItemToFrontend);
+};
+
+/**
+ * Get single PO Item API call
+ */
+export const getPoItemAPI = async (id: string | number, token: string): Promise<any> => {
+  const response = await fetch(`http://localhost:8000/api/po-items/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch PO item with ID: ${id}`);
+  }
+
+  const apiPoItem = await response.json();
+  return convertApiPoItemToFrontend(apiPoItem);
+};
+
+/**
+ * Create PO Item API call
+ */
+export interface CreatePoItemData {
+  po_id: string | number;
+  material_id: string | number;
+  name: string;
+  qty: number;
+  price?: number;
+}
+
+export const createPoItemAPI = async (poItemData: CreatePoItemData, token: string): Promise<any> => {
+  const response = await fetch('http://localhost:8000/api/po-items', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(poItemData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create PO item');
+    }
+  }
+
+  const createdPoItem = await response.json();
+  return convertApiPoItemToFrontend(createdPoItem);
+};
+
+/**
+ * Update PO Item API call
+ */
+export const updatePoItemAPI = async (id: string | number, poItemData: Partial<any>, token: string): Promise<any> => {
+  const apiPoItemData: any = {
+    ...(poItemData.po_id !== undefined && { po_id: poItemData.po_id }),
+    ...(poItemData.material_id !== undefined && { material_id: poItemData.material_id }),
+    ...(poItemData.name !== undefined && { name: poItemData.name }),
+    ...(poItemData.qty !== undefined && { qty: poItemData.qty }),
+    ...(poItemData.price !== undefined && { price: poItemData.price }),
+  };
+
+  const response = await fetch(`http://localhost:8000/api/po-items/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiPoItemData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('PO item not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update PO item');
+    }
+  }
+
+  const updatedPoItem = await response.json();
+  return convertApiPoItemToFrontend(updatedPoItem);
+};
+
+/**
+ * Delete PO Item API call
+ */
+export const deletePoItemAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/po-items/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('PO item not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete PO item');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete PO item');
+  }
+};

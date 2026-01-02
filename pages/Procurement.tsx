@@ -9,11 +9,12 @@ import { RFQ, PurchaseOrder, ReceivingGoods, ProcurementItem, Supplier, RFQItem 
 type TabType = 'SUPPLIERS' | 'RFQ' | 'PO' | 'RECEIVING';
 
 export const Procurement: React.FC = () => {
-  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs, loadSuppliers, addSupplier, updateSupplier, deleteSupplier, addRfqItem, updateRfqItem, deleteRfqItem, loadRfqItems } = useStore();
+  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs, loadSuppliers, addSupplier, updateSupplier, deleteSupplier, addRfqItem, updateRfqItem, deleteRfqItem, loadRfqItems, loadPOs, addPO, updatePO: updatePOFromStore, deletePO, loadPoItems, addPoItem, updatePoItem, deletePoItem } = useStore();
   const [activeTab, setActiveTab] = useState<TabType>('RFQ');
 
   const [isRfqModalOpen, setIsRfqModalOpen] = useState(false);
   const [isPoModalOpen, setIsPoModalOpen] = useState<RFQ | null>(null);
+  const [editingPO, setEditingPO] = useState<any>(null);
   const [isBdModalOpen, setIsBdModalOpen] = useState<PurchaseOrder | null>(null);
 
   // Load RFQs when component mounts or when RFQ tab is active
@@ -23,16 +24,22 @@ export const Procurement: React.FC = () => {
         console.error('Failed to load RFQs:', error);
       });
     }
+    if (activeTab === 'PO') {
+      loadPOs().catch(error => {
+        console.error('Failed to load purchase orders:', error);
+      });
+    }
     if (activeTab === 'SUPPLIERS') {
       loadSuppliers().catch(error => {
         console.error('Failed to load suppliers:', error);
       });
     }
-  }, [activeTab, loadRFQs, loadSuppliers]);
+  }, [activeTab, loadRFQs, loadPOs, loadSuppliers]);
 
   const [newRfq, setNewRfq] = useState({ description: '', items: [] as ProcurementItem[] });
   const [tempItem, setTempItem] = useState({ materialId: '', qty: 0 });
   const [poData, setPoData] = useState({ supplierId: '', description: '', items: [] as ProcurementItem[] });
+  const [tempPoItem, setTempPoItem] = useState({ materialId: '', qty: 0, price: 0 });
   const [bdData, setBdData] = useState({ description: '' });
 
   // Supplier modal state
@@ -99,20 +106,33 @@ export const Procurement: React.FC = () => {
     setActiveTab('PO');
   };
 
+  // Function to start editing an existing PO
+  const startEditPO = (po: any) => {
+    setPoData({
+      supplierId: po.supplierId || po.supplier_id,
+      description: po.description,
+      items: po.items || []
+    });
+    setEditingPO(po); // Set the PO being edited
+    setIsPoModalOpen(null); // We don't need the RFQ for editing
+    setActiveTab('PO');
+  };
+
   const createPOFromRFQ = async (rfq: RFQ) => {
     try {
       // Create the PO first
-      const po: PurchaseOrder = {
-        id: `po-${Date.now()}`,
+      const poDataToSend = {
         code: `PO-${Math.floor(Math.random() * 9000) + 1000}`,
-        date: new Date().toISOString(),
+        date: new Date().toISOString().split('T')[0], // Format date as YYYY-MM-DD
         supplierId: poData.supplierId,
+        rfq_id: rfq.id,
         description: poData.description,
-        items: poData.items,
         status: 'OPEN',
-        grandTotal: poData.items.reduce((sum, item) => sum + (item.price || 0) * item.qty, 0)
+        grandTotal: poData.items.reduce((sum, item) => sum + (item.price || 0) * item.qty, 0),
+        items: poData.items
       };
-      createPO(po);
+
+      const createdPO = await addPO(poDataToSend);
 
       // Update the RFQ status to 'PO_CREATED'
       await updateRFQ(rfq.id, { status: 'PO_CREATED' });
@@ -123,6 +143,35 @@ export const Procurement: React.FC = () => {
     } catch (error) {
       console.error('Failed to create PO or update RFQ:', error);
       alert('Failed to create PO: ' + (error as Error).message);
+    }
+  };
+
+  // Function to update an existing PO
+  const updateExistingPO = async (poId?: string) => {
+    try {
+      const poIdToUpdate = poId || editingPO?.id;
+      if (!poIdToUpdate) {
+        alert('No PO ID provided for update');
+        return;
+      }
+
+      const poDataToSend = {
+        supplierId: poData.supplierId,
+        description: poData.description,
+        status: 'OPEN', // Keep status as OPEN for now
+        grandTotal: poData.items.reduce((sum, item) => sum + (item.price || 0) * item.qty, 0),
+        items: poData.items
+      };
+
+      await updatePOFromStore(poIdToUpdate, poDataToSend);
+
+      // Close the modal and reset state
+      setIsPoModalOpen(null);
+      setEditingPO(null);
+      setPoData({ supplierId: '', description: '', items: [] });
+    } catch (error) {
+      console.error('Failed to update PO:', error);
+      alert('Failed to update PO: ' + (error as Error).message);
     }
   };
 
@@ -153,6 +202,43 @@ export const Procurement: React.FC = () => {
     // So we'll need to handle this differently - maybe by updating the entire RFQ
     // For now, we'll just update the local state
     console.log('Deleting item from RFQ:', rfqId, itemIndex);
+  };
+
+  // Function to delete a PO
+  const deletePOHandler = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this purchase order?')) {
+      try {
+        await deletePO(id);
+      } catch (error) {
+        console.error('Failed to delete PO:', error);
+        alert('Failed to delete PO: ' + (error as Error).message);
+      }
+    }
+  };
+
+  // Function to add a PO item
+  const handleAddPoItem = () => {
+    const mat = materials.find(m => m.id === tempPoItem.materialId);
+    if (mat && tempPoItem.qty > 0) {
+      setPoData(prev => ({
+        ...prev,
+        items: [...prev.items, {
+          materialId: mat.id,
+          name: mat.name,
+          qty: tempPoItem.qty,
+          price: tempPoItem.price
+        }]
+      }));
+      setTempPoItem({ materialId: '', qty: 0, price: 0 });
+    }
+  };
+
+  // Function to remove a PO item
+  const handleRemovePoItem = (index: number) => {
+    setPoData(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
   };
 
   // Supplier functions
@@ -291,15 +377,29 @@ export const Procurement: React.FC = () => {
                       <p className="text-emerald-600 font-black">{p.code}</p>
                       <p className="text-[10px] text-slate-400 mt-1 font-mono">{new Date(p.date).toLocaleDateString()}</p>
                    </td>
-                   <td className="px-8 py-5 text-slate-800 uppercase text-xs truncate max-w-[200px]">{suppliers.find(s => s.id === p.supplierId)?.name || 'Unknown Vendor'}</td>
+                   <td className="px-8 py-5 text-slate-800 uppercase text-xs truncate max-w-[200px]">
+                     {p.supplier ? p.supplier.name : suppliers.find(s => s.id === p.supplierId)?.name || 'Unknown Vendor'}
+                   </td>
                    <td className="px-8 py-5 text-blue-600 font-black text-base">Rp{p.grandTotal.toLocaleString()}</td>
                    <td className="px-8 py-5">
                       <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest ${p.status === 'RECEIVED' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>{p.status}</span>
                    </td>
                    <td className="px-8 py-5 text-right">
-                      {p.status === 'OPEN' && (
-                        <button onClick={() => startReceiving(p)} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all flex items-center gap-2 ml-auto shadow-lg active:scale-95">RECEIVE <Truck size={14}/></button>
-                      )}
+                      <div className="flex justify-end gap-2">
+                        {p.status === 'OPEN' && (
+                          <button onClick={() => startReceiving(p)} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all flex items-center gap-2 ml-auto shadow-lg active:scale-95">RECEIVE <Truck size={14}/></button>
+                        )}
+                        {p.status === 'OPEN' && (
+                          <button onClick={() => startEditPO(p)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors">
+                            <Edit3 size={16}/>
+                          </button>
+                        )}
+                        {p.status === 'OPEN' && (
+                          <button onClick={() => deletePOHandler(p.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
                    </td>
                  </tr>
                ))}
@@ -421,6 +521,26 @@ export const Procurement: React.FC = () => {
 
                  <div className="space-y-4">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3"><FileText size={14}/> PO ITEMS</h4>
+                    <div className="bg-blue-50/50 p-6 rounded-[32px] border-2 border-blue-100 border-dashed space-y-6">
+                       <div className="flex flex-col md:flex-row gap-4 items-end">
+                          <div className="flex-1 w-full space-y-2">
+                             <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest ml-4">Select Material</label>
+                             <select className="w-full p-4 bg-white rounded-2xl font-black outline-none border border-slate-200 focus:ring-4 focus:ring-blue-100 transition-all appearance-none" value={tempPoItem.materialId} onChange={e => setTempPoItem({...tempPoItem, materialId: e.target.value})}>
+                               <option value="">Choose material...</option>
+                               {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.currentStock} {m.unit})</option>)}
+                             </select>
+                          </div>
+                          <div className="w-full md:w-32 space-y-2">
+                             <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest text-center block">Quantity</label>
+                             <input type="number" className="w-full p-4 bg-white rounded-2xl font-black text-center border border-slate-200 outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={tempPoItem.qty} onChange={e => setTempPoItem({...tempPoItem, qty: Number(e.target.value)})} />
+                          </div>
+                          <div className="w-full md:w-32 space-y-2">
+                             <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest text-center block">Price</label>
+                             <input type="number" className="w-full p-4 bg-white rounded-2xl font-black text-center border border-slate-200 outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={tempPoItem.price} onChange={e => setTempPoItem({...tempPoItem, price: Number(e.target.value)})} />
+                          </div>
+                          <button onClick={handleAddPoItem} className="w-full md:w-16 bg-blue-600 text-white p-4 rounded-2xl hover:bg-blue-700 transition-all shadow-xl flex items-center justify-center shrink-0"><Plus size={24}/></button>
+                       </div>
+                    </div>
                     <div className="divide-y border border-slate-100 rounded-[32px] overflow-hidden bg-white shadow-sm">
                        {poData.items.map((it, idx) => (
                          <div key={idx} className="p-5 md:p-6 flex flex-col sm:flex-row justify-between items-center bg-white hover:bg-slate-50 transition-colors gap-4">
@@ -438,6 +558,7 @@ export const Procurement: React.FC = () => {
                                   }} />
                                </div>
                                <p className="text-xl font-black text-emerald-600 leading-none">Rp{(it.price || 0) * it.qty}</p>
+                               <button onClick={() => handleRemovePoItem(idx)} className="p-2 text-red-300 hover:text-red-500 transition-all"><Trash2 size={20}/></button>
                             </div>
                          </div>
                        ))}
@@ -447,7 +568,11 @@ export const Procurement: React.FC = () => {
               </div>
               <div className="p-6 md:p-8 border-t shrink-0 bg-slate-50 flex justify-end gap-4">
                  <button onClick={() => setIsPoModalOpen(null)} className="px-8 py-4 rounded-[24px] font-black text-lg uppercase border border-slate-300 text-slate-600 hover:bg-slate-100 transition-all">CANCEL</button>
-                 <button onClick={() => createPOFromRFQ(isPoModalOpen!)} className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-lg uppercase shadow-2xl hover:bg-blue-600 transition-all">CREATE PO</button>
+                 {isPoModalOpen ? (
+                   <button onClick={() => createPOFromRFQ(isPoModalOpen!)} className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-lg uppercase shadow-2xl hover:bg-blue-600 transition-all">CREATE PO</button>
+                 ) : (
+                   <button onClick={() => updateExistingPO()} className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-lg uppercase shadow-2xl hover:bg-blue-600 transition-all">UPDATE PO</button>
+                 )}
               </div>
            </div>
         </div>

@@ -30,7 +30,17 @@ import {
   getRfqItemsAPI,
   createRfqItemAPI,
   updateRfqItemAPI,
-  deleteRfqItemAPI
+  deleteRfqItemAPI,
+  getPurchaseOrdersAPI,
+  getPurchaseOrderAPI,
+  createPurchaseOrderAPI,
+  updatePurchaseOrderAPI,
+  deletePurchaseOrderAPI,
+  getPoItemsAPI,
+  getPoItemAPI,
+  createPoItemAPI,
+  updatePoItemAPI,
+  deletePoItemAPI
 } from '../lib/api';
 
 interface AppState {
@@ -111,6 +121,18 @@ interface AppState {
   addRfqItem: (rfqItem: any) => Promise<void>;
   updateRfqItem: (id: string, rfqItemData: Partial<any>) => Promise<void>;
   deleteRfqItem: (id: string) => Promise<void>;
+
+  // Purchase Order functions
+  loadPOs: () => Promise<void>;
+  addPO: (po: any) => Promise<void>;
+  updatePO: (id: string, poData: Partial<any>) => Promise<void>;
+  deletePO: (id: string) => Promise<void>;
+
+  // PO Item functions
+  loadPoItems: () => Promise<void>;
+  addPoItem: (poItem: any) => Promise<void>;
+  updatePoItem: (id: string, poItemData: Partial<any>) => Promise<void>;
+  deletePoItem: (id: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -137,13 +159,14 @@ export const useStore = create<AppState>((set, get) => ({
         const projects = await getProjectsAPI(token);
         const materials = await getMaterialsAPI(token);
         const rfqs = await import('../lib/api').then(mod => mod.getRfqsAPI(token));
-        set({ projects, materials, rfqs });
+        const pos = await import('../lib/api').then(mod => mod.getPurchaseOrdersAPI(token));
+        set({ projects, materials, rfqs, pos });
       } catch (error) {
         console.error('Failed to initialize data:', error);
-        set({ projects: [], materials: [], rfqs: [] });
+        set({ projects: [], materials: [], rfqs: [], pos: [] });
       }
     } else {
-      set({ projects: [], materials: [], rfqs: [] });
+      set({ projects: [], materials: [], rfqs: [], pos: [] });
     }
   },
 
@@ -171,7 +194,7 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.setItem('currentUser', JSON.stringify(user));
       localStorage.setItem('token', token);
 
-      // Load projects, materials, and RFQs after successful login
+      // Load projects, materials, RFQs, and POs after successful login
       if (token) {
         try {
           const projects = await getProjectsAPI(token);
@@ -180,14 +203,16 @@ export const useStore = create<AppState>((set, get) => ({
           await get().loadMaterials();
           // Load RFQs using the new loadRFQs function
           await get().loadRFQs();
+          // Load POs using the new loadPOs function
+          await get().loadPOs();
         } catch (error) {
-          console.error('Failed to load projects, materials, and RFQs:', error);
+          console.error('Failed to load projects, materials, RFQs, and POs:', error);
           // Set empty arrays if loading fails
-          set({ projects: [], materials: [], rfqs: [] });
+          set({ projects: [], materials: [], rfqs: [], pos: [] });
         }
       } else {
-        // If no token, set empty projects, materials, and RFQs
-        set({ projects: [], materials: [], rfqs: [] });
+        // If no token, set empty projects, materials, RFQs, and POs
+        set({ projects: [], materials: [], rfqs: [], pos: [] });
       }
 
       return true;
@@ -533,7 +558,7 @@ export const useStore = create<AppState>((set, get) => ({
     const token = get().token;
     if (!token) {
       console.error('No token available for API call');
-      set({ projects: [], materials: [], users: [], rfqs: [] });
+      set({ projects: [], materials: [], users: [], rfqs: [], pos: [] });
       return;
     }
 
@@ -541,12 +566,13 @@ export const useStore = create<AppState>((set, get) => ({
       const projects = await getProjectsAPI(token);
       const materials = await getMaterialsAPI(token);
       const rfqs = await import('../lib/api').then(mod => mod.getRfqsAPI(token));
+      const pos = await import('../lib/api').then(mod => mod.getPurchaseOrdersAPI(token));
       const { getUsersAPI } = await import('../lib/api');
       const users = await getUsersAPI(token);
-      set({ projects, materials, rfqs, users });
+      set({ projects, materials, rfqs, pos, users });
     } catch (error) {
-      console.error('Failed to reload projects, materials, RFQs and users:', error);
-      set({ projects: [], materials: [], rfqs: [], users: [] });
+      console.error('Failed to reload projects, materials, RFQs, POs and users:', error);
+      set({ projects: [], materials: [], rfqs: [], pos: [], users: [] });
     }
   },
 
@@ -1010,7 +1036,44 @@ export const useStore = create<AppState>((set, get) => ({
       throw error;
     }
   },
-  createPO: (po) => set(s => ({ pos: [po, ...s.pos] })),
+  createPO: async (po) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ pos: [po, ...s.pos] }));
+      return;
+    }
+
+    try {
+      // Format the PO data for the API
+      const poData = {
+        code: po.code,
+        date: po.date,
+        supplier_id: po.supplierId,
+        rfq_id: po.rfq_id,
+        description: po.description,
+        status: po.status,
+        grand_total: po.grandTotal,
+        po_items: Array.isArray(po.items) ? po.items.map(item => ({
+          material_id: item.materialId || item.material_id,
+          name: item.name,
+          qty: item.qty,
+          price: item.price
+        })) : []
+      };
+
+      // Create the PO via API
+      const createdPo = await createPurchaseOrderAPI(poData, token);
+
+      // Update the state with the created PO from the API (which may have additional fields)
+      set(s => ({ pos: [createdPo, ...s.pos] }));
+    } catch (error) {
+      console.error('Failed to create PO via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ pos: [po, ...s.pos] }));
+      throw error;
+    }
+  },
   receiveGoods: (r) => set(s => ({ receivings: [r, ...s.receivings] })),
   createDeliveryOrder: (sj) => set(s => ({ deliveryOrders: [sj, ...s.deliveryOrders] })),
   updateDeliveryOrder: (sj) => set(s => ({ deliveryOrders: s.deliveryOrders.map(x => x.id === sj.id ? sj : x) })),
@@ -1081,6 +1144,172 @@ export const useStore = create<AppState>((set, get) => ({
       await deleteRfqItemAPI(id, token);
     } catch (error) {
       console.error('Failed to delete RFQ item via API:', error);
+      throw error;
+    }
+  },
+
+  // Purchase Order functions
+  loadPOs: async () => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const pos = await getPurchaseOrdersAPI(token);
+      set({ pos });
+    } catch (error) {
+      console.error('Failed to load purchase orders from API:', error);
+      set({ pos: [] });
+      throw error;
+    }
+  },
+  addPO: async (po) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ pos: [po, ...s.pos] }));
+      return;
+    }
+
+    try {
+      // Format the PO data for the API
+      const poData = {
+        code: po.code,
+        date: po.date,
+        supplier_id: po.supplierId,
+        rfq_id: po.rfq_id,
+        description: po.description,
+        status: po.status,
+        grand_total: po.grandTotal,
+        po_items: Array.isArray(po.items) ? po.items.map(item => ({
+          material_id: item.materialId || item.material_id,
+          name: item.name,
+          qty: item.qty,
+          price: item.price
+        })) : []
+      };
+
+      // Create the PO via API
+      const createdPo = await createPurchaseOrderAPI(poData, token);
+
+      // Update the state with the created PO from the API (which may have additional fields)
+      set(s => ({ pos: [createdPo, ...s.pos] }));
+    } catch (error) {
+      console.error('Failed to create PO via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ pos: [po, ...s.pos] }));
+      throw error;
+    }
+  },
+  updatePO: async (id, poData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ pos: s.pos.map(p => p.id === id ? { ...p, ...poData } : p) }));
+      return;
+    }
+
+    try {
+      // Update the PO via API
+      const updatedPo = await updatePurchaseOrderAPI(id, poData, token);
+
+      // Update the state with the updated PO from the API
+      set(s => ({ pos: s.pos.map(p => p.id === id ? updatedPo : p) }));
+    } catch (error) {
+      console.error('Failed to update PO via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ pos: s.pos.map(p => p.id === id ? { ...p, ...poData } : p) }));
+      throw error;
+    }
+  },
+  deletePO: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ pos: s.pos.filter(p => p.id !== id) }));
+      return;
+    }
+
+    try {
+      // Delete the PO via API
+      await deletePurchaseOrderAPI(id, token);
+
+      // Update the state to remove the deleted PO
+      set(s => ({ pos: s.pos.filter(p => p.id !== id) }));
+    } catch (error) {
+      console.error('Failed to delete PO via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ pos: s.pos.filter(p => p.id !== id) }));
+      throw error;
+    }
+  },
+
+  // PO Item functions
+  loadPoItems: async () => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const poItems = await getPoItemsAPI(token);
+      // We don't store PO items separately in the state since they're part of POs
+      // This function is just a wrapper for the API call
+    } catch (error) {
+      console.error('Failed to load PO items from API:', error);
+      throw error;
+    }
+  },
+  addPoItem: async (poItem) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Create the PO item via API
+      const createdPoItem = await createPoItemAPI(poItem, token);
+      return createdPoItem;
+    } catch (error) {
+      console.error('Failed to create PO item via API:', error);
+      throw error;
+    }
+  },
+  updatePoItem: async (id, poItemData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Update the PO item via API
+      const updatedPoItem = await updatePoItemAPI(id, poItemData, token);
+      return updatedPoItem;
+    } catch (error) {
+      console.error('Failed to update PO item via API:', error);
+      throw error;
+    }
+  },
+  deletePoItem: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Delete the PO item via API
+      await deletePoItemAPI(id, token);
+    } catch (error) {
+      console.error('Failed to delete PO item via API:', error);
       throw error;
     }
   }
