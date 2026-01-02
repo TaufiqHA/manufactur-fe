@@ -1,28 +1,100 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { 
+import {
   Plus, Trash2, X, Box, Layers, Settings2, Component, ArrowRight, Info, Lock, Save, Trash, AlertCircle, TrendingUp, CheckCircle2, ChevronLeft, Target, Clock, Hammer, Calendar, ClipboardList
 } from 'lucide-react';
-import { RAW_STEPS, ASSEMBLY_STEPS, ProcessStep, ItemStepConfig } from '../types';
+import { RAW_STEPS, ASSEMBLY_STEPS, ProcessStep, ItemStepConfig, Project } from '../types';
 
 export const ProjectDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { projects, items, machines, materials, tasks, logs, addProjectItem, deleteProjectItem, validateWorkflow, addSubAssembly, deleteSubAssembly, lockSubAssembly } = useStore();
-  
+  const { projects, items, machines, materials, tasks, logs, addProjectItem, deleteProjectItem, validateWorkflow, addSubAssembly, deleteSubAssembly, lockSubAssembly, loadProjectItems } = useStore();
+
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState<string | null>(null);
   const [isFlowModalOpen, setIsFlowModalOpen] = useState<string | null>(null);
   const [logDetailSa, setLogDetailSa] = useState<{id: string, name: string} | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [projectData, setProjectData] = useState<Project | null>(null);
 
   const [newItem, setNewItem] = useState({ name: '', dimensions: '', thickness: '', qtySet: 1, unit: 'PCS', flowType: 'NEW' as 'OLD' | 'NEW' });
   const [newSub, setNewSub] = useState({ name: '', qtyPerParent: 1, materialId: '', processes: [] as ProcessStep[] });
   const [workflowConfig, setWorkflowConfig] = useState<ItemStepConfig[]>([]);
 
-  const project = projects.find(p => p.id === id);
+  const project = projectData || projects.find(p => p.id === id);
   const projectItems = items.filter(i => i.projectId === id);
+
+  // Define updateProjectProgress before useEffect hooks that use it
+  const updateProjectProgress = async () => {
+    if (!project) return;
+
+    try {
+      const { updateProjectAPI } = await import('../lib/api');
+      const token = localStorage.getItem('token');
+      if (token) {
+        // Calculate overall project progress
+        const totalTarget = project.totalQty || 0;
+        const completedQty = tasks
+          .filter(t => t.projectId === id && t.step === 'PACKING')
+          .reduce((acc, t) => acc + t.completedQty, 0);
+
+        const newProgress = totalTarget > 0 ? Math.round((completedQty / totalTarget) * 100) : 0;
+
+        // Update project with new progress
+        await updateProjectAPI(project.id, { progress: newProgress }, token);
+
+        // Update local state
+        setProjectData(prev => prev ? { ...prev, progress: newProgress } : null);
+      }
+    } catch (error) {
+      // Error handling for progress update
+    }
+  };
+
+  // Load project data and items from API when component mounts
+  useEffect(() => {
+    const loadProjectData = async () => {
+      setLoading(true);
+      try {
+        // First, try to get from store
+        let project = projects.find(p => p.id === id);
+
+        // If not in store, fetch from API
+        if (!project) {
+          const { getProjectAPI } = await import('../lib/api');
+          const token = localStorage.getItem('token');
+          if (token) {
+            project = await getProjectAPI(id!, token);
+            setProjectData(project);
+          }
+        } else {
+          setProjectData(project);
+        }
+
+        // Load project items from API
+        if (id) {
+          await loadProjectItems(id);
+          // Note: loadProjectItems will handle errors gracefully and not throw
+        }
+      } catch (error) {
+        // Error handling for project data loading
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProjectData();
+  }, [id, projects, loadProjectItems]);
+
+  // Update project progress when tasks change
+  useEffect(() => {
+    const progressUpdateTimer = setTimeout(() => {
+      updateProjectProgress();
+    }, 1000);
+
+    return () => clearTimeout(progressUpdateTimer);
+  }, [tasks, project?.id, id]);
 
   const stats = useMemo(() => {
     const totalTarget = project?.totalQty || 0;
@@ -31,15 +103,36 @@ export const ProjectDetail: React.FC = () => {
     return { totalTarget, completed, progress };
   }, [id, tasks, project]);
 
-  if (!project) return <div className="p-10 text-center font-bold text-slate-400 font-sans">Project Tidak Ditemukan</div>;
+  if (loading) {
+    return <div className="p-10 text-center font-bold text-slate-400 font-sans">Memuat data project...</div>;
+  }
 
-  const handleAddItem = (e: React.FormEvent) => {
+  if (!project) {
+    return (
+      <div className="p-10 text-center font-sans">
+        <p className="font-bold text-slate-400 mb-6">Project Tidak Ditemukan</p>
+        <button
+          onClick={() => navigate('/projects')}
+          className="bg-blue-600 text-white px-8 py-4 rounded-[24px] font-black text-xs uppercase hover:bg-blue-700 transition-all"
+        >
+          ← Kembali Ke Daftar
+        </button>
+      </div>
+    );
+  }
+
+  const handleAddItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    addProjectItem({
-      ...newItem, id: `item-${Date.now()}`, projectId: project.id, quantity: project.totalQty * newItem.qtySet, 
-      isBomLocked: false, isWorkflowLocked: false, bom: [], workflow: [], subAssemblies: [], warehouseQty: 0, shippedQty: 0, assemblyStats: {}
-    } as any);
-    setIsItemModalOpen(false);
+    try {
+      await addProjectItem({
+        ...newItem, id: `item-${Date.now()}`, projectId: project!.id, quantity: project!.totalQty * newItem.qtySet,
+        isBomLocked: false, isWorkflowLocked: false, bom: [], workflow: [], subAssemblies: [], warehouseQty: 0, shippedQty: 0, assemblyStats: {}
+      } as any);
+      setIsItemModalOpen(false);
+      setNewItem({ name: '', dimensions: '', thickness: '', qtySet: 1, unit: 'PCS', flowType: 'NEW' as 'OLD' | 'NEW' });
+    } catch (error) {
+      alert('Gagal menambahkan item kerja. Silakan coba lagi.');
+    }
   };
 
   const handleAddSub = (itemId: string) => {
@@ -140,7 +233,15 @@ export const ProjectDetail: React.FC = () => {
                     </button>
                   )}
                   <button onClick={() => startFlowConfig(item)} className="flex-1 bg-slate-900 text-white px-8 py-5 rounded-[24px] font-black text-xs uppercase shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95"><Settings2 size={20}/> FLOW ASSEMBLY</button>
-                  <button onClick={() => deleteProjectItem(item.id)} className="p-5 text-slate-300 hover:text-red-500 rounded-3xl transition-all"><Trash2 size={24}/></button>
+                  <button onClick={async () => {
+                    if (window.confirm('Yakin ingin menghapus item ini?')) {
+                      try {
+                        await deleteProjectItem(item.id);
+                      } catch (error) {
+                        alert('Gagal menghapus item kerja. Silakan coba lagi.');
+                      }
+                    }
+                  }} className="p-5 text-slate-300 hover:text-red-500 rounded-3xl transition-all"><Trash2 size={24}/></button>
                 </div>
               </div>
 
@@ -388,7 +489,24 @@ export const ProjectDetail: React.FC = () => {
                  ))}
               </div>
               <div className="p-12 border-t flex justify-end">
-                 <button onClick={() => { validateWorkflow(isFlowModalOpen!, workflowConfig); setIsFlowModalOpen(null); }} className="px-16 py-6 bg-blue-600 text-white rounded-[32px] font-black uppercase text-sm tracking-[0.2em] shadow-2xl flex items-center gap-4 hover:bg-emerald-600 transition-all active:scale-95"><Save size={24}/> TERBITKAN SEMUA TUGAS</button>
+                 <button onClick={async () => {
+                   try {
+                     validateWorkflow(isFlowModalOpen!, workflowConfig);
+
+                     // Update project status to IN_PROGRESS via API
+                     if (project) {
+                       const { updateProjectAPI } = await import('../lib/api');
+                       const token = localStorage.getItem('token');
+                       if (token) {
+                         await updateProjectAPI(project.id, { status: 'IN_PROGRESS' }, token);
+                       }
+                     }
+
+                     setIsFlowModalOpen(null);
+                   } catch (error) {
+                     alert('Gagal menerbitkan workflow. Silakan coba lagi.');
+                   }
+                 }} className="px-16 py-6 bg-blue-600 text-white rounded-[32px] font-black uppercase text-sm tracking-[0.2em] shadow-2xl flex items-center gap-4 hover:bg-emerald-600 transition-all active:scale-95"><Save size={24}/> TERBITKAN SEMUA TUGAS</button>
               </div>
            </div>
         </div>

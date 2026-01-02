@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { Plus, Trash2, Edit3, X, ChevronLeft, ChevronRight, Search, UserCheck } from 'lucide-react';
@@ -48,8 +47,7 @@ export const Users: React.FC = () => {
         setLoading(true);
         await loadUsersFromAPI();
       } catch (error) {
-        console.error('Failed to fetch users:', error);
-        // Still set loading to false even if there's an error
+        // Error fetching users
       } finally {
         setLoading(false);
       }
@@ -114,7 +112,6 @@ export const Users: React.FC = () => {
         }
         setIsModalOpen(false);
       } catch (error) {
-        console.error('Failed to save user:', error);
         alert(`Failed to save user: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
   };
@@ -180,7 +177,6 @@ export const Users: React.FC = () => {
                                         try {
                                           await deleteUserAPI(user.id);
                                         } catch (error) {
-                                          console.error('Failed to delete user:', error);
                                           alert(`Failed to delete user: ${error instanceof Error ? error.message : 'Unknown error'}`);
                                         }
                                       }

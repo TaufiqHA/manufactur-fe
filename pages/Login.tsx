@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
@@ -26,7 +25,6 @@ export const Login: React.FC = () => {
       }
     } catch (err) {
       setError('Terjadi kesalahan saat login. Silakan coba lagi.');
-      console.error('Login error:', err);
     } finally {
       setLoading(false);
     }

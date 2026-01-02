@@ -23,7 +23,6 @@ const convertApiUserToFrontend = (apiUser: any): User => {
     try {
       permissions = JSON.parse(apiUser.permissions);
     } catch (e) {
-      console.warn('Failed to parse permissions:', e);
       permissions = {};
     }
   } else if (apiUser.permissions) {
@@ -305,21 +304,28 @@ const convertApiProjectToFrontend = (apiProject: any): Project => {
  * Get all projects API call
  */
 export const getProjectsAPI = async (token: string): Promise<Project[]> => {
-  const response = await fetch('http://localhost:8000/api/projects', {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  try {
+    const response = await fetch('http://localhost:8000/api/projects', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-  if (!response.ok) {
-    const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch projects');
+    if (!response.ok) {
+      const errorData: ErrorResponse = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to fetch projects (${response.status})`);
+    }
+
+    const apiProjects = await response.json();
+    return apiProjects.map(convertApiProjectToFrontend);
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Is the API server running at http://localhost:8000?');
+    }
+    throw error;
   }
-
-  const apiProjects = await response.json();
-  return apiProjects.map(convertApiProjectToFrontend);
 };
 
 /**
@@ -1987,5 +1993,229 @@ export const deleteReceivingItemAPI = async (id: string | number, token: string)
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
     throw new Error(errorData.message || 'Failed to delete receiving item');
+  }
+};
+
+/**
+ * Convert API response field names to frontend field names for Project Item
+ */
+const convertApiProjectItemToFrontend = (apiProjectItem: any): any => {
+  return {
+    id: apiProjectItem.id?.toString(),
+    project_id: apiProjectItem.project_id?.toString(),
+    name: apiProjectItem.name,
+    dimensions: apiProjectItem.dimensions,
+    thickness: apiProjectItem.thickness,
+    qty_set: apiProjectItem.qty_set,
+    quantity: apiProjectItem.quantity,
+    unit: apiProjectItem.unit,
+    is_bom_locked: apiProjectItem.is_bom_locked,
+    is_workflow_locked: apiProjectItem.is_workflow_locked,
+    flow_type: apiProjectItem.flow_type,
+    warehouse_qty: apiProjectItem.warehouse_qty || 0,
+    shipped_qty: apiProjectItem.shipped_qty || 0,
+    created_at: apiProjectItem.created_at,
+    updated_at: apiProjectItem.updated_at,
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for Project Item
+ */
+const convertFrontendProjectItemToApi = (frontendProjectItem: any): any => {
+  return {
+    project_id: frontendProjectItem.project_id,
+    name: frontendProjectItem.name,
+    dimensions: frontendProjectItem.dimensions,
+    thickness: frontendProjectItem.thickness,
+    qty_set: frontendProjectItem.qty_set,
+    quantity: frontendProjectItem.quantity,
+    unit: frontendProjectItem.unit,
+    is_bom_locked: frontendProjectItem.is_bom_locked || false,
+    is_workflow_locked: frontendProjectItem.is_workflow_locked || false,
+    flow_type: frontendProjectItem.flow_type || 'NEW',
+    warehouse_qty: frontendProjectItem.warehouse_qty || 0,
+    shipped_qty: frontendProjectItem.shipped_qty || 0,
+  };
+};
+
+/**
+ * Get all project items API call
+ */
+export const getProjectItemsAPI = async (token: string, projectId?: string | number): Promise<any[]> => {
+  let url = 'http://localhost:8000/api/project-items';
+  if (projectId) {
+    url += `?project_id=${projectId}`;
+  }
+
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      let errorData: any = {};
+      let responseText = '';
+
+      try {
+        responseText = await response.text();
+        errorData = JSON.parse(responseText);
+      } catch (e) {
+        errorData = { message: responseText || 'Unknown error' };
+      }
+
+
+      const errorMessage = errorData.message
+        || (errorData.errors && Object.values(errorData.errors).flat().join(', '))
+        || `Failed to fetch project items (${response.status})`;
+
+      throw new Error(errorMessage);
+    }
+
+    const apiResponse = await response.json();
+
+    // Handle both paginated and array responses
+    const projectItemsData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+    return projectItemsData.map(convertApiProjectItemToFrontend);
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Cannot connect to backend. Is the API server running at http://localhost:8000?');
+    }
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Get single project item API call
+ */
+export const getProjectItemAPI = async (id: string | number, token: string): Promise<any> => {
+  const response = await fetch(`http://localhost:8000/api/project-items/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch project item with ID: ${id}`);
+  }
+
+  const apiProjectItem = await response.json();
+  return convertApiProjectItemToFrontend(apiProjectItem);
+};
+
+/**
+ * Create project item API call
+ */
+export interface CreateProjectItemData {
+  project_id: string | number;
+  name: string;
+  dimensions?: string;
+  thickness?: string;
+  qty_set: number;
+  quantity: number;
+  unit: string;
+  is_bom_locked?: boolean;
+  is_workflow_locked?: boolean;
+  flow_type?: 'OLD' | 'NEW';
+  warehouse_qty?: number;
+  shipped_qty?: number;
+}
+
+export const createProjectItemAPI = async (projectItemData: CreateProjectItemData, token: string): Promise<any> => {
+  const response = await fetch('http://localhost:8000/api/project-items', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(convertFrontendProjectItemToApi(projectItemData)),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create project item');
+    }
+  }
+
+  const createdProjectItem = await response.json();
+  return convertApiProjectItemToFrontend(createdProjectItem.data || createdProjectItem);
+};
+
+/**
+ * Update project item API call
+ */
+export const updateProjectItemAPI = async (id: string | number, projectItemData: Partial<any>, token: string): Promise<any> => {
+  const apiProjectItemData = convertFrontendProjectItemToApi(projectItemData);
+
+  const response = await fetch(`http://localhost:8000/api/project-items/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiProjectItemData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('Project item not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update project item');
+    }
+  }
+
+  const updatedProjectItem = await response.json();
+  return convertApiProjectItemToFrontend(updatedProjectItem.data || updatedProjectItem);
+};
+
+/**
+ * Delete project item API call
+ */
+export const deleteProjectItemAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/project-items/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('Project item not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete project item');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete project item');
   }
 };

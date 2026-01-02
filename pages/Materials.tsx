@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { Plus, Edit3, X, Search, ChevronLeft, ChevronRight, Package, AlertCircle } from 'lucide-react';
@@ -41,8 +40,7 @@ export const Materials: React.FC = () => {
       }
       setIsModalOpen(false);
     } catch (error) {
-      console.error('Error saving material:', error);
-      // Optionally show an error message to the user
+      // Error saving material
     }
   };
 
@@ -55,8 +53,7 @@ export const Materials: React.FC = () => {
         setAdjustValue(0);
       }
     } catch (error) {
-      console.error('Error adjusting stock:', error);
-      // Optionally show an error message to the user
+      // Error adjusting stock
     }
   };
 
@@ -115,8 +112,7 @@ export const Materials: React.FC = () => {
                                 try {
                                   await deleteMaterial(mat.id);
                                 } catch (error) {
-                                  console.error('Error deleting material:', error);
-                                  // Optionally show an error message to the user
+                                  // Error deleting material
                                 }
                               }
                             }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><X size={18}/></button>

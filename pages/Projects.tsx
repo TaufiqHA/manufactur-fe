@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
@@ -33,7 +32,7 @@ export const Projects: React.FC = () => {
       try {
         await reloadProjects();
       } catch (error) {
-        console.error('Failed to load projects:', error);
+        // Error loading projects
       } finally {
         setIsLoading(false);
       }
@@ -79,7 +78,6 @@ export const Projects: React.FC = () => {
       }
       setIsModalOpen(false);
     } catch (error) {
-      console.error('Error saving project:', error);
       alert('Failed to save project. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -104,7 +102,6 @@ export const Projects: React.FC = () => {
     try {
       await validateProject(id);
     } catch (error) {
-      console.error('Error validating project:', error);
       alert('Failed to validate project. Please try again.');
     } finally {
       setIsDeleting(null);

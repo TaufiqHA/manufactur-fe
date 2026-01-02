@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import {
@@ -20,23 +19,23 @@ export const Procurement: React.FC = () => {
   // Load data when component mounts or when specific tab is active
   useEffect(() => {
     if (activeTab === 'RFQ') {
-      loadRFQs().catch(error => {
-        console.error('Failed to load RFQs:', error);
+      loadRFQs().catch(() => {
+        // Error loading RFQs
       });
     }
     if (activeTab === 'PO') {
-      loadPOs().catch(error => {
-        console.error('Failed to load purchase orders:', error);
+      loadPOs().catch(() => {
+        // Error loading purchase orders
       });
     }
     if (activeTab === 'SUPPLIERS') {
-      loadSuppliers().catch(error => {
-        console.error('Failed to load suppliers:', error);
+      loadSuppliers().catch(() => {
+        // Error loading suppliers
       });
     }
     if (activeTab === 'RECEIVING') {
-      loadReceivingGoods().catch(error => {
-        console.error('Failed to load receiving goods:', error);
+      loadReceivingGoods().catch(() => {
+        // Error loading receiving goods
       });
     }
   }, [activeTab, loadRFQs, loadPOs, loadSuppliers, loadReceivingGoods]);
@@ -96,7 +95,6 @@ export const Procurement: React.FC = () => {
             price: item.price || 0
           });
         } catch (itemError) {
-          console.error('Failed to create RFQ item:', itemError);
           // Continue with other items even if one fails
         }
       }
@@ -104,7 +102,6 @@ export const Procurement: React.FC = () => {
       setNewRfq({ description: '', items: [] });
       setIsRfqModalOpen(false);
     } catch (error) {
-      console.error('Failed to create RFQ:', error);
       alert('Failed to create RFQ: ' + (error as Error).message);
     }
   };
@@ -150,7 +147,6 @@ export const Procurement: React.FC = () => {
       setIsPoModalOpen(null);
       setPoData({ supplierId: '', description: '', items: [] });
     } catch (error) {
-      console.error('Failed to create PO or update RFQ:', error);
       alert('Failed to create PO: ' + (error as Error).message);
     }
   };
@@ -179,7 +175,6 @@ export const Procurement: React.FC = () => {
       setEditingPO(null);
       setPoData({ supplierId: '', description: '', items: [] });
     } catch (error) {
-      console.error('Failed to update PO:', error);
       alert('Failed to update PO: ' + (error as Error).message);
     }
   };
@@ -198,7 +193,6 @@ export const Procurement: React.FC = () => {
         price: item.price || 0
       });
     } catch (error) {
-      console.error('Failed to add RFQ item via API:', error);
       // The error is caught but we continue with local state update
     }
   };
@@ -208,7 +202,6 @@ export const Procurement: React.FC = () => {
     // In the current implementation, we don't have individual RFQ item IDs
     // So we'll need to handle this differently - maybe by updating the entire RFQ
     // For now, we'll just update the local state
-    console.log('Deleting item from RFQ:', rfqId, itemIndex);
   };
 
   // Function to delete a PO
@@ -217,7 +210,6 @@ export const Procurement: React.FC = () => {
       try {
         await deletePO(id);
       } catch (error) {
-        console.error('Failed to delete PO:', error);
         alert('Failed to delete PO: ' + (error as Error).message);
       }
     }
@@ -281,7 +273,6 @@ export const Procurement: React.FC = () => {
       setIsSupplierModalOpen(false);
       setNewSupplier({ name: '', address: '', contact: '' });
     } catch (error) {
-      console.error('Failed to save supplier:', error);
       alert('Failed to save supplier: ' + (error as Error).message);
     }
   };
@@ -291,7 +282,6 @@ export const Procurement: React.FC = () => {
       try {
         await deleteSupplier(id);
       } catch (error) {
-        console.error('Failed to delete supplier:', error);
         alert('Failed to delete supplier: ' + (error as Error).message);
       }
     }
@@ -356,7 +346,6 @@ export const Procurement: React.FC = () => {
       setIsReceivingModalOpen(null);
       setReceivingData({ code: '', date: new Date().toISOString().split('T')[0], items: [] as ProcurementItem[] });
     } catch (error) {
-      console.error('Failed to create receiving good:', error);
       alert('Failed to create receiving good: ' + (error as Error).message);
     }
   };
@@ -424,7 +413,6 @@ export const Procurement: React.FC = () => {
                                 try {
                                   await deleteRFQ(r.id);
                                 } catch (error) {
-                                  console.error('Failed to delete RFQ:', error);
                                   alert('Failed to delete RFQ: ' + (error as Error).message);
                                 }
                               }

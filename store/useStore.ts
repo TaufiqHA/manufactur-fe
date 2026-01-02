@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import {
   Project, Material, ProjectItem, Machine, Task, User, ProductionLog,
@@ -18,7 +17,11 @@ import {
   getMaterialsAPI,
   createMaterialAPI,
   updateMaterialAPI,
-  deleteMaterialAPI
+  deleteMaterialAPI,
+  getProjectItemsAPI,
+  createProjectItemAPI,
+  updateProjectItemAPI,
+  deleteProjectItemAPI
 } from '../lib/api';
 
 // Import supplier API functions
@@ -74,8 +77,9 @@ interface AppState {
   logout: () => void;
   initializeData: () => Promise<void>;
 
-  addProjectItem: (item: ProjectItem) => void;
-  deleteProjectItem: (id: string) => void;
+  addProjectItem: (item: ProjectItem) => Promise<void>;
+  deleteProjectItem: (id: string) => Promise<void>;
+  loadProjectItems: (projectId?: string) => Promise<void>;
   addSubAssembly: (itemId: string, sa: SubAssembly) => void;
   lockSubAssembly: (itemId: string, saId: string) => void;
   deleteSubAssembly: (itemId: string, saId: string) => void;
@@ -184,7 +188,17 @@ export const useStore = create<AppState>((set, get) => ({
         const pos = await import('../lib/api').then(mod => mod.getPurchaseOrdersAPI(token));
         set({ projects, materials, rfqs, pos });
       } catch (error) {
-        console.error('Failed to initialize data:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        // Check if it's a network error
+        if (errorMessage.includes('Cannot connect to backend')) {
+          // Backend is unreachable
+        } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+          // Clear invalid token
+          localStorage.removeItem('token');
+          localStorage.removeItem('currentUser');
+        }
+
         set({ projects: [], materials: [], rfqs: [], pos: [] });
       }
     } else {
@@ -200,7 +214,6 @@ export const useStore = create<AppState>((set, get) => ({
         const materials = await getMaterialsAPI(token);
         set({ materials });
       } catch (error) {
-        console.error('Failed to load materials:', error);
         set({ materials: [] });
       }
     } else {
@@ -228,7 +241,6 @@ export const useStore = create<AppState>((set, get) => ({
           // Load POs using the new loadPOs function
           await get().loadPOs();
         } catch (error) {
-          console.error('Failed to load projects, materials, RFQs, and POs:', error);
           // Set empty arrays if loading fails
           set({ projects: [], materials: [], rfqs: [], pos: [] });
         }
@@ -239,7 +251,6 @@ export const useStore = create<AppState>((set, get) => ({
 
       return true;
     } catch (error) {
-      console.error('Login failed:', error);
       return false;
     }
   },
@@ -248,7 +259,9 @@ export const useStore = create<AppState>((set, get) => ({
     const token = get().token;
     if (token) {
       import('../lib/api').then(mod => {
-        mod.logoutAPI(token).catch(err => console.error('Logout API failed:', err));
+        mod.logoutAPI(token).catch(() => {
+          // Logout API failed
+        });
       });
     }
 
@@ -257,8 +270,126 @@ export const useStore = create<AppState>((set, get) => ({
     localStorage.removeItem('token');
   },
 
-  addProjectItem: (item) => set(s => ({ items: [...s.items, item] })),
-  deleteProjectItem: (id) => set(s => ({ items: s.items.filter(i => i.id !== id) })),
+  addProjectItem: async (item) => {
+    const token = get().token;
+    if (!token) {
+      set(s => ({ items: [...s.items, item] })); // Fallback to local state
+      return;
+    }
+
+    try {
+      const projectItemData = {
+        project_id: item.projectId,
+        name: item.name,
+        dimensions: item.dimensions,
+        thickness: item.thickness,
+        qty_set: item.qtySet,
+        quantity: item.quantity,
+        unit: item.unit,
+        is_bom_locked: item.isBomLocked,
+        is_workflow_locked: item.isWorkflowLocked,
+        flow_type: item.flowType,
+        warehouse_qty: item.warehouseQty || 0,
+        shipped_qty: item.shippedQty || 0
+      };
+
+      const createdProjectItem = await createProjectItemAPI(projectItemData, token);
+
+      // Transform API response to match the ProjectItem type
+      const transformedItem: ProjectItem = {
+        id: createdProjectItem.id,
+        projectId: createdProjectItem.project_id,
+        name: createdProjectItem.name,
+        dimensions: createdProjectItem.dimensions,
+        thickness: createdProjectItem.thickness,
+        qtySet: createdProjectItem.qty_set,
+        quantity: createdProjectItem.quantity,
+        unit: createdProjectItem.unit,
+        isBomLocked: createdProjectItem.is_bom_locked,
+        isWorkflowLocked: createdProjectItem.is_workflow_locked,
+        flowType: createdProjectItem.flow_type,
+        warehouseQty: createdProjectItem.warehouse_qty,
+        shippedQty: createdProjectItem.shipped_qty,
+        bom: [],
+        workflow: [],
+        subAssemblies: [],
+        assemblyStats: {}
+      };
+
+      set(s => ({ items: [...s.items, transformedItem] }));
+    } catch (error) {
+      // Fallback to local state if API fails
+      set(s => ({ items: [...s.items, item] }));
+      throw error;
+    }
+  },
+
+  deleteProjectItem: async (id) => {
+    const token = get().token;
+    if (!token) {
+      set(s => ({ items: s.items.filter(i => i.id !== id) })); // Fallback to local state
+      return;
+    }
+
+    try {
+      await deleteProjectItemAPI(id, token);
+      set(s => ({ items: s.items.filter(i => i.id !== id) }));
+    } catch (error) {
+      // Fallback to local state if API fails
+      set(s => ({ items: s.items.filter(i => i.id !== id) }));
+      throw error;
+    }
+  },
+
+  loadProjectItems: async (projectId?) => {
+    const token = get().token;
+    if (!token) {
+      return;
+    }
+
+    try {
+      const projectItems = await getProjectItemsAPI(token, projectId);
+
+      // Transform API response to match the ProjectItem type
+      const transformedItems = projectItems.map((item: any) => ({
+        id: item.id,
+        projectId: item.project_id,
+        name: item.name,
+        dimensions: item.dimensions,
+        thickness: item.thickness,
+        qtySet: item.qty_set,
+        quantity: item.quantity,
+        unit: item.unit,
+        isBomLocked: item.is_bom_locked,
+        isWorkflowLocked: item.is_workflow_locked,
+        flowType: item.flow_type,
+        warehouseQty: item.warehouse_qty,
+        shippedQty: item.shipped_qty,
+        bom: [],
+        workflow: [],
+        subAssemblies: [],
+        assemblyStats: {}
+      }));
+
+      set({ items: transformedItems });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Check if it's a network error
+      if (errorMessage.includes('Cannot connect to backend')) {
+        // Backend API is unreachable
+      } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentUser');
+      } else if (errorMessage.includes('500')) {
+        // Server error encountered
+      }
+
+      // Don't crash - just set empty items and continue
+      // This allows the page to still work even if items can't be loaded
+      set({ items: [] });
+    }
+  },
 
   addSubAssembly: (itemId, sa) => set(s => ({
     items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: [...i.subAssemblies, { ...sa, stepStats: {} }] } : i)
@@ -446,7 +577,6 @@ export const useStore = create<AppState>((set, get) => ({
   addProject: async (p) => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       return;
     }
 
@@ -471,7 +601,6 @@ export const useStore = create<AppState>((set, get) => ({
       const updatedProjects = await getProjectsAPI(token);
       set(s => ({ projects: updatedProjects }));
     } catch (error) {
-      console.error('Failed to create project:', error);
       // Reload projects to ensure consistency even if there's an error
       try {
         const token = get().token;
@@ -480,7 +609,7 @@ export const useStore = create<AppState>((set, get) => ({
           set(s => ({ projects }));
         }
       } catch (reloadError) {
-        console.error('Failed to reload projects after error:', reloadError);
+        // Failed to reload projects
       }
       throw error;
     }
@@ -489,7 +618,6 @@ export const useStore = create<AppState>((set, get) => ({
   updateProject: async (p) => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       return;
     }
 
@@ -514,7 +642,7 @@ export const useStore = create<AppState>((set, get) => ({
           set(s => ({ projects }));
         }
       } catch (reloadError) {
-        console.error('Failed to reload projects after error:', reloadError);
+        // Failed to reload projects
       }
       throw error;
     }
@@ -523,7 +651,6 @@ export const useStore = create<AppState>((set, get) => ({
   validateProject: async (id) => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       return;
     }
 
@@ -533,7 +660,6 @@ export const useStore = create<AppState>((set, get) => ({
       const updatedProjects = await getProjectsAPI(token);
       set(s => ({ projects: updatedProjects }));
     } catch (error) {
-      console.error('Failed to validate project:', error);
       // Reload projects to ensure consistency even if there's an error
       try {
         const token = get().token;
@@ -542,7 +668,7 @@ export const useStore = create<AppState>((set, get) => ({
           set(s => ({ projects }));
         }
       } catch (reloadError) {
-        console.error('Failed to reload projects after error:', reloadError);
+        // Failed to reload projects
       }
       throw error;
     }
@@ -551,7 +677,6 @@ export const useStore = create<AppState>((set, get) => ({
   deleteProject: async (id) => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       return;
     }
 
@@ -561,7 +686,6 @@ export const useStore = create<AppState>((set, get) => ({
       const updatedProjects = await getProjectsAPI(token);
       set(s => ({ projects: updatedProjects }));
     } catch (error) {
-      console.error('Failed to delete project:', error);
       // Reload projects to ensure consistency even if there's an error
       try {
         const token = get().token;
@@ -570,7 +694,7 @@ export const useStore = create<AppState>((set, get) => ({
           set(s => ({ projects }));
         }
       } catch (reloadError) {
-        console.error('Failed to reload projects after error:', reloadError);
+        // Failed to reload projects
       }
       throw error;
     }
@@ -579,7 +703,6 @@ export const useStore = create<AppState>((set, get) => ({
   reloadProjects: async () => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       set({ projects: [], materials: [], users: [], rfqs: [], pos: [] });
       return;
     }
@@ -593,7 +716,6 @@ export const useStore = create<AppState>((set, get) => ({
       const users = await getUsersAPI(token);
       set({ projects, materials, rfqs, pos, users });
     } catch (error) {
-      console.error('Failed to reload projects, materials, RFQs, POs and users:', error);
       set({ projects: [], materials: [], rfqs: [], pos: [], users: [] });
     }
   },
@@ -601,7 +723,6 @@ export const useStore = create<AppState>((set, get) => ({
   addMaterial: async (m) => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       set(s => ({ materials: [m, ...s.materials] })); // Fallback to local state
       return;
     }
@@ -628,7 +749,6 @@ export const useStore = create<AppState>((set, get) => ({
   updateMaterial: async (m) => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       set(s => ({ materials: s.materials.map(x => x.id === m.id ? m : x) })); // Fallback to local state
       return;
     }
@@ -646,7 +766,6 @@ export const useStore = create<AppState>((set, get) => ({
       const updatedMaterial = await updateMaterialAPI(m.id, materialData, token);
       set(s => ({ materials: s.materials.map(x => x.id === m.id ? updatedMaterial : x) }));
     } catch (error) {
-      console.error('Failed to update material via API:', error);
       // Fallback to local state if API fails
       set(s => ({ materials: s.materials.map(x => x.id === m.id ? m : x) }));
       throw error;
@@ -655,7 +774,6 @@ export const useStore = create<AppState>((set, get) => ({
   adjustStock: async (id, q) => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       set(s => ({ materials: s.materials.map(x => x.id === id ? {...x, currentStock: x.currentStock + q} : x) })); // Fallback to local state
       return;
     }
@@ -686,7 +804,6 @@ export const useStore = create<AppState>((set, get) => ({
       const result = await updateMaterialAPI(id, materialData, token);
       set(s => ({ materials: s.materials.map(x => x.id === id ? result : x) }));
     } catch (error) {
-      console.error('Failed to adjust stock via API:', error);
       // Fallback to local state if API fails
       set(s => ({ materials: s.materials.map(x => x.id === id ? {...x, currentStock: x.currentStock + q} : x) }));
       throw error;
@@ -695,7 +812,6 @@ export const useStore = create<AppState>((set, get) => ({
   deleteMaterial: async (id: string) => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       set(s => ({ materials: s.materials.filter(x => x.id !== id) })); // Fallback to local state
       return;
     }
@@ -704,7 +820,6 @@ export const useStore = create<AppState>((set, get) => ({
       await deleteMaterialAPI(id, token);
       set(s => ({ materials: s.materials.filter(x => x.id !== id) }));
     } catch (error) {
-      console.error('Failed to delete material via API:', error);
       // Fallback to local state if API fails
       set(s => ({ materials: s.materials.filter(x => x.id !== id) }));
       throw error;
@@ -720,7 +835,6 @@ export const useStore = create<AppState>((set, get) => ({
   loadUsersFromAPI: async () => {
     const token = get().token;
     if (!token) {
-      console.error('No token available for API call');
       return;
     }
 
@@ -1510,4 +1624,3 @@ export const useStore = create<AppState>((set, get) => ({
     }
   }
 }));
-
