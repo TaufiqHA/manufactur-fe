@@ -178,6 +178,7 @@ export interface Supplier {
 
 export interface ProcurementItem {
   materialId: string;
+  material_id?: string;
   name: string;
   qty: number;
   price?: number;
@@ -197,6 +198,8 @@ export interface PurchaseOrder {
   code: string;
   date: string;
   supplierId: string;
+  rfq_id?: string;
+  rfqId?: string;
   description: string;
   items: ProcurementItem[];
   status: 'OPEN' | 'RECEIVED';
@@ -212,6 +215,29 @@ export interface RFQItem {
   price: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface ReceivingItem {
+  id: string;
+  receiving_id: string;
+  material_id: string;
+  name: string;
+  qty: number;
+  created_at?: string;
+  updated_at?: string;
+  material?: Material;
+  receiving?: ReceivingGood;
+}
+
+export interface ReceivingGood {
+  id: string;
+  code: string;
+  date: string;
+  po_id: string;
+  created_at?: string;
+  updated_at?: string;
+  purchase_order?: PurchaseOrder;
+  items: ReceivingItem[];
 }
 
 export interface ReceivingGoods {

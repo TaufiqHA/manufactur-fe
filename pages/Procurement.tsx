@@ -9,7 +9,7 @@ import { RFQ, PurchaseOrder, ReceivingGoods, ProcurementItem, Supplier, RFQItem 
 type TabType = 'SUPPLIERS' | 'RFQ' | 'PO' | 'RECEIVING';
 
 export const Procurement: React.FC = () => {
-  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs, loadSuppliers, addSupplier, updateSupplier, deleteSupplier, addRfqItem, updateRfqItem, deleteRfqItem, loadRfqItems, loadPOs, addPO, updatePO: updatePOFromStore, deletePO, loadPoItems, addPoItem, updatePoItem, deletePoItem } = useStore();
+  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs, loadSuppliers, addSupplier, updateSupplier, deleteSupplier, addRfqItem, updateRfqItem, deleteRfqItem, loadRfqItems, loadPOs, addPO, updatePO: updatePOFromStore, deletePO, loadPoItems, addPoItem, updatePoItem, deletePoItem, addReceivingGood, loadReceivingGoods } = useStore();
   const [activeTab, setActiveTab] = useState<TabType>('RFQ');
 
   const [isRfqModalOpen, setIsRfqModalOpen] = useState(false);
@@ -17,7 +17,7 @@ export const Procurement: React.FC = () => {
   const [editingPO, setEditingPO] = useState<any>(null);
   const [isBdModalOpen, setIsBdModalOpen] = useState<PurchaseOrder | null>(null);
 
-  // Load RFQs when component mounts or when RFQ tab is active
+  // Load data when component mounts or when specific tab is active
   useEffect(() => {
     if (activeTab === 'RFQ') {
       loadRFQs().catch(error => {
@@ -34,13 +34,22 @@ export const Procurement: React.FC = () => {
         console.error('Failed to load suppliers:', error);
       });
     }
-  }, [activeTab, loadRFQs, loadPOs, loadSuppliers]);
+    if (activeTab === 'RECEIVING') {
+      loadReceivingGoods().catch(error => {
+        console.error('Failed to load receiving goods:', error);
+      });
+    }
+  }, [activeTab, loadRFQs, loadPOs, loadSuppliers, loadReceivingGoods]);
 
   const [newRfq, setNewRfq] = useState({ description: '', items: [] as ProcurementItem[] });
   const [tempItem, setTempItem] = useState({ materialId: '', qty: 0 });
   const [poData, setPoData] = useState({ supplierId: '', description: '', items: [] as ProcurementItem[] });
   const [tempPoItem, setTempPoItem] = useState({ materialId: '', qty: 0, price: 0 });
   const [bdData, setBdData] = useState({ description: '' });
+
+  // Receiving goods modal state
+  const [isReceivingModalOpen, setIsReceivingModalOpen] = useState<PurchaseOrder | null>(null);
+  const [receivingData, setReceivingData] = useState({ code: '', date: new Date().toISOString().split('T')[0], items: [] as ProcurementItem[] });
 
   // Supplier modal state
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
@@ -175,10 +184,8 @@ export const Procurement: React.FC = () => {
     }
   };
 
-  const startReceiving = (po: PurchaseOrder) => {
-    setBdData({ description: po.description });
-    setIsBdModalOpen(po);
-  };
+  // Note: The original startReceiving function has been replaced with the new implementation
+  // that uses the receiving goods modal instead of the bd modal
 
   // Function to add an item to an existing RFQ using the API
   const addRfqItemToRfq = async (rfqId: string, item: ProcurementItem) => {
@@ -290,6 +297,70 @@ export const Procurement: React.FC = () => {
     }
   };
 
+  // Receiving goods functions
+  const startReceiving = (po: PurchaseOrder) => {
+    // Pre-populate receiving items with the same items from the PO
+    const receivingItems = Array.isArray(po.items)
+      ? po.items.map(item => ({
+          materialId: item.materialId || item.material_id,
+          name: item.name,
+          qty: item.qty
+        }))
+      : [];
+
+    setReceivingData({
+      code: `RG-${Math.floor(Math.random() * 9000) + 1000}`,
+      date: new Date().toISOString().split('T')[0],
+      items: receivingItems
+    });
+    setIsReceivingModalOpen(po);
+  };
+
+  const submitReceiving = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!isReceivingModalOpen) return;
+
+    // Validate that received quantities are positive
+    for (const item of receivingData.items) {
+      if (item.qty <= 0) {
+        alert(`Received quantity for ${item.name} must be greater than 0`);
+        return;
+      }
+    }
+
+    try {
+      // Create the receiving good with only the required fields, ensuring clean data structure
+      const receivingGoodData = {
+        code: receivingData.code,
+        date: receivingData.date,
+        po_id: isReceivingModalOpen.id,
+        items: receivingData.items.map(item => ({
+          material_id: item.materialId || item.material_id,
+          name: item.name,
+          qty: Number(item.qty) // Ensure qty is a number
+        }))
+      };
+
+      await addReceivingGood(receivingGoodData);
+
+      // Update the PO status to RECEIVED - only send the status field to avoid validation errors
+      try {
+        await updatePOFromStore(isReceivingModalOpen.id, { status: 'RECEIVED' });
+      } catch (statusUpdateError) {
+        console.error('Failed to update PO status, but receiving good was created successfully:', statusUpdateError);
+        // Continue with closing the modal even if status update fails
+      }
+
+      // Close the modal and reset state
+      setIsReceivingModalOpen(null);
+      setReceivingData({ code: '', date: new Date().toISOString().split('T')[0], items: [] as ProcurementItem[] });
+    } catch (error) {
+      console.error('Failed to create receiving good:', error);
+      alert('Failed to create receiving good: ' + (error as Error).message);
+    }
+  };
+
   return (
     <div className="space-y-6 md:space-y-10 pb-10">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
@@ -378,7 +449,7 @@ export const Procurement: React.FC = () => {
                       <p className="text-[10px] text-slate-400 mt-1 font-mono">{new Date(p.date).toLocaleDateString()}</p>
                    </td>
                    <td className="px-8 py-5 text-slate-800 uppercase text-xs truncate max-w-[200px]">
-                     {p.supplier ? p.supplier.name : suppliers.find(s => s.id === p.supplierId)?.name || 'Unknown Vendor'}
+                     {suppliers.find(s => s.id === p.supplierId)?.name || 'Unknown Vendor'}
                    </td>
                    <td className="px-8 py-5 text-blue-600 font-black text-base">Rp{p.grandTotal.toLocaleString()}</td>
                    <td className="px-8 py-5">
@@ -624,6 +695,104 @@ export const Procurement: React.FC = () => {
                  <div className="p-6 md:p-8 border-t shrink-0 bg-slate-50 flex justify-end gap-4">
                     <button type="button" onClick={() => setIsSupplierModalOpen(false)} className="px-8 py-4 rounded-[24px] font-black text-lg uppercase border border-slate-300 text-slate-600 hover:bg-slate-100 transition-all">CANCEL</button>
                     <button type="submit" className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-lg uppercase shadow-2xl hover:bg-blue-600 transition-all">SAVE</button>
+                 </div>
+              </form>
+           </div>
+        </div>
+      )}
+
+      {/* RECEIVING GOODS MODAL */}
+      {isReceivingModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 z-[300] flex items-center justify-center p-2 sm:p-4 md:p-6 backdrop-blur-md">
+           <div className="bg-white rounded-[32px] md:rounded-[48px] w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+              <div className="p-6 md:p-8 border-b bg-slate-50 shrink-0 flex justify-between items-center">
+                 <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">Receive Goods</h2>
+                 <button onClick={() => setIsReceivingModalOpen(null)} className="p-2 hover:bg-slate-200 rounded-full transition-all text-slate-400"><X size={28}/></button>
+              </div>
+              <form onSubmit={submitReceiving} className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10 space-y-10">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Receiving Code</label>
+                       <input
+                         className="w-full p-4 md:p-6 bg-slate-50 border border-slate-200 rounded-3xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                         placeholder="e.g. RG-001"
+                         value={receivingData.code}
+                         onChange={e => setReceivingData({...receivingData, code: e.target.value})}
+                         required
+                       />
+                    </div>
+                    <div className="space-y-4">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Date</label>
+                       <input
+                         type="date"
+                         className="w-full p-4 md:p-6 bg-slate-50 border border-slate-200 rounded-3xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                         value={receivingData.date}
+                         onChange={e => setReceivingData({...receivingData, date: e.target.value})}
+                         required
+                       />
+                    </div>
+                 </div>
+
+                 <div className="space-y-4">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3"><FileText size={14}/> RECEIVING ITEMS</h4>
+                    <div className="divide-y border border-slate-100 rounded-[32px] overflow-hidden bg-white shadow-sm">
+                       {isReceivingModalOpen && receivingData.items.length > 0 ? (
+                         receivingData.items.map((item, idx) => {
+                           // Find the corresponding item in the original PO to get the PO quantity
+                           const originalPoItem = isReceivingModalOpen?.items?.find(poItem =>
+                             (poItem.materialId || poItem.material_id) === item.materialId
+                           );
+                           const poQty = originalPoItem ? originalPoItem.qty : item.qty;
+
+                           return (
+                           <div key={idx} className="p-5 md:p-6 flex flex-col sm:flex-row justify-between items-center bg-white hover:bg-slate-50 transition-colors gap-4">
+                              <div className="text-center sm:text-left">
+                                 <p className="font-black text-slate-800 text-base uppercase leading-tight">{item.name}</p>
+                                 <p className="text-[9px] text-slate-400 font-black uppercase mt-1 tracking-widest">Ref ID: {item.materialId}</p>
+                              </div>
+                              <div className="flex items-center gap-6">
+                                 <div className="text-center">
+                                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">PO Qty</p>
+                                    <p className="font-black text-slate-700 text-lg">{poQty}</p>
+                                 </div>
+                                 <div className="text-center">
+                                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Received</p>
+                                    <input
+                                      type="number"
+                                      className={`w-16 p-2 rounded-lg font-black text-center border outline-none focus:ring-2 focus:ring-blue-300 transition-all ${
+                                        item.qty > poQty
+                                          ? 'bg-amber-50 border-amber-200 text-amber-700'
+                                          : 'bg-blue-50 border-blue-200'
+                                      }`}
+                                      value={item.qty}
+                                      onChange={e => {
+                                        const newItems = [...receivingData.items];
+                                        newItems[idx] = { ...newItems[idx], qty: Number(e.target.value) };
+                                        setReceivingData({...receivingData, items: newItems});
+                                      }}
+                                      min="0"
+                                    />
+                                    {item.qty > poQty && (
+                                      <p className="text-[8px] text-amber-600 font-black mt-1">OVER RECEIVED</p>
+                                    )}
+                                 </div>
+                              </div>
+                           </div>
+                         )})
+                       ) : isReceivingModalOpen ? (
+                         <div className="p-16 text-center text-slate-200 font-black uppercase italic tracking-[0.2em] text-xs">
+                           No items to receive from this PO
+                         </div>
+                       ) : (
+                         <div className="p-16 text-center text-slate-200 font-black uppercase italic tracking-[0.2em] text-xs">
+                           Loading items...
+                         </div>
+                       )}
+                    </div>
+                 </div>
+                 <div className="p-6 md:p-8 border-t shrink-0 bg-slate-50 flex justify-end gap-4">
+                    <button type="button" onClick={() => setIsReceivingModalOpen(null)} className="px-8 py-4 rounded-[24px] font-black text-lg uppercase border border-slate-300 text-slate-600 hover:bg-slate-100 transition-all">CANCEL</button>
+                    <button type="submit" className="px-12 py-5 bg-slate-900 text-white rounded-[24px] font-black text-lg uppercase shadow-2xl hover:bg-blue-600 transition-all">RECEIVE GOODS</button>
                  </div>
               </form>
            </div>

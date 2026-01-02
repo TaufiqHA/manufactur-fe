@@ -40,7 +40,17 @@ import {
   getPoItemAPI,
   createPoItemAPI,
   updatePoItemAPI,
-  deletePoItemAPI
+  deletePoItemAPI,
+  getReceivingGoodsAPI,
+  getReceivingGoodAPI,
+  createReceivingGoodAPI,
+  updateReceivingGoodAPI,
+  deleteReceivingGoodAPI,
+  getReceivingItemsAPI,
+  getReceivingItemAPI,
+  createReceivingItemAPI,
+  updateReceivingItemAPI,
+  deleteReceivingItemAPI
 } from '../lib/api';
 
 interface AppState {
@@ -133,6 +143,18 @@ interface AppState {
   addPoItem: (poItem: any) => Promise<void>;
   updatePoItem: (id: string, poItemData: Partial<any>) => Promise<void>;
   deletePoItem: (id: string) => Promise<void>;
+
+  // Receiving Goods functions
+  loadReceivingGoods: () => Promise<void>;
+  addReceivingGood: (receivingGood: any) => Promise<void>;
+  updateReceivingGood: (id: string, receivingGoodData: Partial<any>) => Promise<void>;
+  deleteReceivingGood: (id: string) => Promise<void>;
+
+  // Receiving Item functions
+  loadReceivingItems: () => Promise<void>;
+  addReceivingItem: (receivingItem: any) => Promise<void>;
+  updateReceivingItem: (id: string, receivingItemData: Partial<any>) => Promise<void>;
+  deleteReceivingItem: (id: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -1050,7 +1072,7 @@ export const useStore = create<AppState>((set, get) => ({
         code: po.code,
         date: po.date,
         supplier_id: po.supplierId,
-        rfq_id: po.rfq_id,
+        rfq_id: po.rfq_id || po.rfqId,
         description: po.description,
         status: po.status,
         grand_total: po.grandTotal,
@@ -1179,7 +1201,7 @@ export const useStore = create<AppState>((set, get) => ({
         code: po.code,
         date: po.date,
         supplier_id: po.supplierId,
-        rfq_id: po.rfq_id,
+        rfq_id: po.rfq_id || po.rfqId,
         description: po.description,
         status: po.status,
         grand_total: po.grandTotal,
@@ -1212,8 +1234,21 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     try {
-      // Update the PO via API
-      const updatedPo = await updatePurchaseOrderAPI(id, poData, token);
+      // For status-only updates, we might need to send a complete PO object to satisfy backend validation
+      // First, get the current PO from the store to have all the required data
+      const currentPO = get().pos.find(p => p.id === id);
+
+      // If we have the current PO data, merge it with the updates
+      let fullPoData = poData;
+      if (currentPO && Object.keys(poData).length === 1 && poData.status !== undefined) {
+        // If only updating status, send the complete PO data with the new status
+        fullPoData = {
+          ...currentPO,
+          status: poData.status
+        };
+      }
+
+      const updatedPo = await updatePurchaseOrderAPI(id, fullPoData, token);
 
       // Update the state with the updated PO from the API
       set(s => ({ pos: s.pos.map(p => p.id === id ? updatedPo : p) }));
@@ -1310,6 +1345,167 @@ export const useStore = create<AppState>((set, get) => ({
       await deletePoItemAPI(id, token);
     } catch (error) {
       console.error('Failed to delete PO item via API:', error);
+      throw error;
+    }
+  },
+
+  // Receiving Goods functions
+  loadReceivingGoods: async () => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const receivingGoods = await getReceivingGoodsAPI(token);
+      set({ receivings: receivingGoods });
+    } catch (error) {
+      console.error('Failed to load receiving goods from API:', error);
+      set({ receivings: [] });
+      throw error;
+    }
+  },
+  addReceivingGood: async (receivingGood) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ receivings: [receivingGood, ...s.receivings] }));
+      return;
+    }
+
+    try {
+      // Create a clean receiving good data object with only required fields
+      const receivingGoodData = {
+        code: receivingGood.code,
+        date: receivingGood.date,
+        po_id: receivingGood.poId || receivingGood.po_id,
+        items: Array.isArray(receivingGood.items) ? receivingGood.items.map(item => ({
+          material_id: item.materialId || item.material_id,
+          name: item.name,
+          qty: Number(item.qty)
+        })) : []
+      };
+
+      // Create the receiving good via API
+      const createdReceivingGood = await createReceivingGoodAPI(receivingGoodData, token);
+
+      // Update the state with the created receiving good from the API (which may have additional fields)
+      set(s => ({ receivings: [createdReceivingGood, ...s.receivings] }));
+    } catch (error) {
+      console.error('Failed to create receiving good via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ receivings: [receivingGood, ...s.receivings] }));
+      throw error;
+    }
+  },
+  updateReceivingGood: async (id, receivingGoodData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ receivings: s.receivings.map(r => r.id === id ? { ...r, ...receivingGoodData } : r) }));
+      return;
+    }
+
+    try {
+      // Update the receiving good via API
+      const updatedReceivingGood = await updateReceivingGoodAPI(id, receivingGoodData, token);
+
+      // Update the state with the updated receiving good from the API
+      set(s => ({ receivings: s.receivings.map(r => r.id === id ? updatedReceivingGood : r) }));
+    } catch (error) {
+      console.error('Failed to update receiving good via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ receivings: s.receivings.map(r => r.id === id ? { ...r, ...receivingGoodData } : r) }));
+      throw error;
+    }
+  },
+  deleteReceivingGood: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ receivings: s.receivings.filter(r => r.id !== id) }));
+      return;
+    }
+
+    try {
+      // Delete the receiving good via API
+      await deleteReceivingGoodAPI(id, token);
+
+      // Update the state to remove the deleted receiving good
+      set(s => ({ receivings: s.receivings.filter(r => r.id !== id) }));
+    } catch (error) {
+      console.error('Failed to delete receiving good via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ receivings: s.receivings.filter(r => r.id !== id) }));
+      throw error;
+    }
+  },
+
+  // Receiving Item functions
+  loadReceivingItems: async () => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const receivingItems = await getReceivingItemsAPI(token);
+      // We don't store receiving items separately in the state since they're part of receiving goods
+      // This function is just a wrapper for the API call
+    } catch (error) {
+      console.error('Failed to load receiving items from API:', error);
+      throw error;
+    }
+  },
+  addReceivingItem: async (receivingItem) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Create the receiving item via API
+      const createdReceivingItem = await createReceivingItemAPI(receivingItem, token);
+      return createdReceivingItem;
+    } catch (error) {
+      console.error('Failed to create receiving item via API:', error);
+      throw error;
+    }
+  },
+  updateReceivingItem: async (id, receivingItemData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Update the receiving item via API
+      const updatedReceivingItem = await updateReceivingItemAPI(id, receivingItemData, token);
+      return updatedReceivingItem;
+    } catch (error) {
+      console.error('Failed to update receiving item via API:', error);
+      throw error;
+    }
+  },
+  deleteReceivingItem: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Delete the receiving item via API
+      await deleteReceivingItemAPI(id, token);
+    } catch (error) {
+      console.error('Failed to delete receiving item via API:', error);
       throw error;
     }
   }

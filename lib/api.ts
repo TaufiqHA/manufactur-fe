@@ -1209,7 +1209,7 @@ const convertApiPurchaseOrderToFrontend = (apiPo: any): any => {
     grandTotal: parseFloat(apiPo.grand_total) || 0,
     created_at: apiPo.created_at,
     updated_at: apiPo.updated_at,
-    items: Array.isArray(apiPo.poItems) ? apiPo.poItems.map((item: any) => ({
+    items: Array.isArray(apiPo.items) ? apiPo.items.map((item: any) => ({
       id: item.id?.toString(),
       po_id: item.po_id?.toString(),
       material_id: item.material_id?.toString(),
@@ -1355,17 +1355,19 @@ export const createPurchaseOrderAPI = async (poData: CreatePurchaseOrderData, to
  * Update Purchase Order API call
  */
 export const updatePurchaseOrderAPI = async (id: string | number, poData: Partial<any>, token: string): Promise<any> => {
-  const apiPoData: any = {
-    ...(poData.code !== undefined && { code: poData.code }),
-    ...(poData.date !== undefined && { date: poData.date }),
-    ...(poData.supplierId !== undefined && { supplier_id: poData.supplierId }),
-    ...(poData.supplier_id !== undefined && { supplier_id: poData.supplier_id }),
-    ...(poData.rfq_id !== undefined && { rfq_id: poData.rfq_id }),
-    ...(poData.description !== undefined && { description: poData.description }),
-    ...(poData.status !== undefined && { status: poData.status }),
-    ...(poData.grandTotal !== undefined && { grand_total: poData.grandTotal }),
-    ...(poData.grand_total !== undefined && { grand_total: poData.grand_total }),
-  };
+  // Only include fields that are actually being updated to avoid validation errors
+  const apiPoData: any = {};
+
+  if (poData.code !== undefined) apiPoData.code = poData.code;
+  if (poData.date !== undefined) apiPoData.date = poData.date;
+  if (poData.supplierId !== undefined) apiPoData.supplier_id = poData.supplierId;
+  if (poData.supplier_id !== undefined) apiPoData.supplier_id = poData.supplier_id;
+  if (poData.rfq_id !== undefined) apiPoData.rfq_id = poData.rfq_id;
+  if (poData.rfqId !== undefined) apiPoData.rfq_id = poData.rfqId; // Handle both field names
+  if (poData.description !== undefined) apiPoData.description = poData.description;
+  if (poData.status !== undefined) apiPoData.status = poData.status;
+  if (poData.grandTotal !== undefined) apiPoData.grand_total = poData.grandTotal;
+  if (poData.grand_total !== undefined) apiPoData.grand_total = poData.grand_total;
 
   const response = await fetch(`http://localhost:8000/api/purchase-orders/${id}`, {
     method: 'PUT',
@@ -1598,5 +1600,392 @@ export const deletePoItemAPI = async (id: string | number, token: string): Promi
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
     throw new Error(errorData.message || 'Failed to delete PO item');
+  }
+};
+
+/**
+ * Convert API response field names to frontend field names for Receiving Good
+ */
+const convertApiReceivingGoodToFrontend = (apiReceivingGood: any): any => {
+  return {
+    id: apiReceivingGood.id?.toString(),
+    code: apiReceivingGood.code,
+    date: apiReceivingGood.date,
+    po_id: apiReceivingGood.po_id?.toString(),
+    created_at: apiReceivingGood.created_at,
+    updated_at: apiReceivingGood.updated_at,
+    purchase_order: apiReceivingGood.purchase_order ? {
+      id: apiReceivingGood.purchase_order.id?.toString(),
+      code: apiReceivingGood.purchase_order.code,
+      date: apiReceivingGood.purchase_order.date,
+      supplier_id: apiReceivingGood.purchase_order.supplier_id?.toString(),
+      description: apiReceivingGood.purchase_order.description,
+      status: apiReceivingGood.purchase_order.status,
+      grand_total: parseFloat(apiReceivingGood.purchase_order.grand_total) || 0,
+      supplier: apiReceivingGood.purchase_order.supplier ? {
+        id: apiReceivingGood.purchase_order.supplier.id?.toString(),
+        name: apiReceivingGood.purchase_order.supplier.name,
+        contact_person: apiReceivingGood.purchase_order.supplier.contact_person,
+        phone: apiReceivingGood.purchase_order.supplier.phone,
+        email: apiReceivingGood.purchase_order.supplier.email,
+        address: apiReceivingGood.purchase_order.supplier.address,
+      } : undefined,
+    } : undefined,
+    items: Array.isArray(apiReceivingGood.items) ? apiReceivingGood.items.map((item: any) => ({
+      id: item.id?.toString(),
+      receiving_id: item.receiving_id?.toString(),
+      material_id: item.material_id?.toString(),
+      name: item.name,
+      qty: item.qty,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+      material: item.material ? {
+        id: item.material.id?.toString(),
+        code: item.material.code,
+        name: item.material.name,
+        unit: item.material.unit,
+        current_stock: item.material.current_stock,
+        safety_stock: item.material.safety_stock,
+        price_per_unit: parseFloat(item.material.price_per_unit) || 0,
+        category: item.material.category,
+      } : undefined,
+    })) : [],
+  };
+};
+
+/**
+ * Get all Receiving Goods API call
+ */
+export const getReceivingGoodsAPI = async (token: string): Promise<any[]> => {
+  const response = await fetch('http://localhost:8000/api/receiving-goods', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch receiving goods');
+  }
+
+  const apiResponse = await response.json();
+  // Handle paginated response
+  const receivingGoodsData = apiResponse.data?.data || apiResponse.data || [];
+  return receivingGoodsData.map(convertApiReceivingGoodToFrontend);
+};
+
+/**
+ * Get single Receiving Good API call
+ */
+export const getReceivingGoodAPI = async (id: string | number, token: string): Promise<any> => {
+  const response = await fetch(`http://localhost:8000/api/receiving-goods/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch receiving good with ID: ${id}`);
+  }
+
+  const apiReceivingGood = await response.json();
+  return convertApiReceivingGoodToFrontend(apiReceivingGood);
+};
+
+/**
+ * Create Receiving Good API call
+ */
+export interface CreateReceivingGoodData {
+  code: string;
+  date: string;
+  po_id: string | number;
+  items: {
+    material_id: string | number;
+    name: string;
+    qty: number;
+  }[];
+}
+
+export const createReceivingGoodAPI = async (receivingGoodData: CreateReceivingGoodData, token: string): Promise<any> => {
+  const response = await fetch('http://localhost:8000/api/receiving-goods', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(receivingGoodData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create receiving good');
+    }
+  }
+
+  const createdReceivingGood = await response.json();
+  return convertApiReceivingGoodToFrontend(createdReceivingGood);
+};
+
+/**
+ * Update Receiving Good API call
+ */
+export const updateReceivingGoodAPI = async (id: string | number, receivingGoodData: Partial<any>, token: string): Promise<any> => {
+  const apiReceivingGoodData: any = {
+    ...(receivingGoodData.code !== undefined && { code: receivingGoodData.code }),
+    ...(receivingGoodData.date !== undefined && { date: receivingGoodData.date }),
+    ...(receivingGoodData.po_id !== undefined && { po_id: receivingGoodData.po_id }),
+  };
+
+  // Only include items if they exist
+  if ('items' in receivingGoodData && receivingGoodData.items && Array.isArray(receivingGoodData.items)) {
+    apiReceivingGoodData.items = receivingGoodData.items.map((item: any) => ({
+      material_id: item.material_id || item.materialId,
+      name: item.name,
+      qty: item.qty,
+    }));
+  }
+
+  const response = await fetch(`http://localhost:8000/api/receiving-goods/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiReceivingGoodData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('Receiving good not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update receiving good');
+    }
+  }
+
+  const updatedReceivingGood = await response.json();
+  return convertApiReceivingGoodToFrontend(updatedReceivingGood);
+};
+
+/**
+ * Delete Receiving Good API call
+ */
+export const deleteReceivingGoodAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/receiving-goods/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('Receiving good not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete receiving good');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete receiving good');
+  }
+};
+
+/**
+ * Convert API response field names to frontend field names for Receiving Item
+ */
+const convertApiReceivingItemToFrontend = (apiReceivingItem: any): any => {
+  return {
+    id: apiReceivingItem.id?.toString(),
+    receiving_id: apiReceivingItem.receiving_id?.toString(),
+    material_id: apiReceivingItem.material_id?.toString(),
+    name: apiReceivingItem.name,
+    qty: apiReceivingItem.qty,
+    created_at: apiReceivingItem.created_at,
+    updated_at: apiReceivingItem.updated_at,
+    receiving: apiReceivingItem.receiving ? {
+      id: apiReceivingItem.receiving.id?.toString(),
+      code: apiReceivingItem.receiving.code,
+      date: apiReceivingItem.receiving.date,
+      po_id: apiReceivingItem.receiving.po_id?.toString(),
+    } : undefined,
+    material: apiReceivingItem.material ? {
+      id: apiReceivingItem.material.id?.toString(),
+      code: apiReceivingItem.material.code,
+      name: apiReceivingItem.material.name,
+      unit: apiReceivingItem.material.unit,
+      current_stock: apiReceivingItem.material.current_stock,
+      safety_stock: apiReceivingItem.material.safety_stock,
+      price_per_unit: parseFloat(apiReceivingItem.material.price_per_unit) || 0,
+      category: apiReceivingItem.material.category,
+    } : undefined
+  };
+};
+
+/**
+ * Get all Receiving Items API call
+ */
+export const getReceivingItemsAPI = async (token: string): Promise<any[]> => {
+  const response = await fetch('http://localhost:8000/api/receiving-items', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch receiving items');
+  }
+
+  const apiResponse = await response.json();
+  // Handle paginated response
+  const receivingItemsData = apiResponse.data?.data || apiResponse.data || [];
+  return receivingItemsData.map(convertApiReceivingItemToFrontend);
+};
+
+/**
+ * Get single Receiving Item API call
+ */
+export const getReceivingItemAPI = async (id: string | number, token: string): Promise<any> => {
+  const response = await fetch(`http://localhost:8000/api/receiving-items/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch receiving item with ID: ${id}`);
+  }
+
+  const apiReceivingItem = await response.json();
+  return convertApiReceivingItemToFrontend(apiReceivingItem);
+};
+
+/**
+ * Create Receiving Item API call
+ */
+export interface CreateReceivingItemData {
+  receiving_id: string | number;
+  material_id: string | number;
+  name: string;
+  qty: number;
+}
+
+export const createReceivingItemAPI = async (receivingItemData: CreateReceivingItemData, token: string): Promise<any> => {
+  const response = await fetch('http://localhost:8000/api/receiving-items', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(receivingItemData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create receiving item');
+    }
+  }
+
+  const createdReceivingItem = await response.json();
+  return convertApiReceivingItemToFrontend(createdReceivingItem);
+};
+
+/**
+ * Update Receiving Item API call
+ */
+export const updateReceivingItemAPI = async (id: string | number, receivingItemData: Partial<any>, token: string): Promise<any> => {
+  const apiReceivingItemData: any = {
+    ...(receivingItemData.receiving_id !== undefined && { receiving_id: receivingItemData.receiving_id }),
+    ...(receivingItemData.material_id !== undefined && { material_id: receivingItemData.material_id }),
+    ...(receivingItemData.name !== undefined && { name: receivingItemData.name }),
+    ...(receivingItemData.qty !== undefined && { qty: receivingItemData.qty }),
+  };
+
+  const response = await fetch(`http://localhost:8000/api/receiving-items/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiReceivingItemData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('Receiving item not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update receiving item');
+    }
+  }
+
+  const updatedReceivingItem = await response.json();
+  return convertApiReceivingItemToFrontend(updatedReceivingItem);
+};
+
+/**
+ * Delete Receiving Item API call
+ */
+export const deleteReceivingItemAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/receiving-items/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('Receiving item not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete receiving item');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete receiving item');
   }
 };

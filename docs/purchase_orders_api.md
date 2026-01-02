@@ -67,7 +67,19 @@ Retrieve a paginated list of all purchase orders.
                 "status": "DRAFT",
                 "created_at": "2023-11-01T10:00:00.000000Z",
                 "updated_at": "2023-11-01T10:00:00.000000Z"
-            }
+            },
+            "items": [
+                {
+                    "id": 1,
+                    "po_id": 1,
+                    "material_id": 1,
+                    "name": "Material Item 1",
+                    "qty": 10,
+                    "price": "150.00",
+                    "created_at": "2023-12-01T10:00:00.000000Z",
+                    "updated_at": "2023-12-01T10:00:00.000000Z"
+                }
+            ]
         }
     ],
     "first_page_url": "http://your-domain.com/api/purchase-orders?page=1",
@@ -142,7 +154,19 @@ Retrieve a specific purchase order by ID.
         "status": "DRAFT",
         "created_at": "2023-11-01T10:00:00.000000Z",
         "updated_at": "2023-11-01T10:00:00.000000Z"
-    }
+    },
+    "items": [
+        {
+            "id": 1,
+            "po_id": 1,
+            "material_id": 1,
+            "name": "Material Item 1",
+            "qty": 10,
+            "price": "150.00",
+            "created_at": "2023-12-01T10:00:00.000000Z",
+            "updated_at": "2023-12-01T10:00:00.000000Z"
+        }
+    ]
 }
 ```
 
@@ -234,7 +258,7 @@ Create a new purchase order.
         "created_at": "2023-11-01T10:00:00.000000Z",
         "updated_at": "2023-11-01T10:00:00.000000Z"
     },
-    "poItems": [
+    "items": [
         {
             "id": 1,
             "po_id": 2,
@@ -323,7 +347,19 @@ Same as create endpoint, but all fields are optional for updates.
         "status": "DRAFT",
         "created_at": "2023-11-02T10:00:00.000000Z",
         "updated_at": "2023-11-02T10:00:00.000000Z"
-    }
+    },
+    "items": [
+        {
+            "id": 1,
+            "po_id": 2,
+            "material_id": 1,
+            "name": "Material Item 1",
+            "qty": 10,
+            "price": "150.00",
+            "created_at": "2023-12-02T10:00:00.000000Z",
+            "updated_at": "2023-12-02T10:00:00.000000Z"
+        }
+    ]
 }
 ```
 
