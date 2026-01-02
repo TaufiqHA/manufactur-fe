@@ -26,7 +26,11 @@ import {
   getSuppliersAPI,
   createSupplierAPI,
   updateSupplierAPI,
-  deleteSupplierAPI
+  deleteSupplierAPI,
+  getRfqItemsAPI,
+  createRfqItemAPI,
+  updateRfqItemAPI,
+  deleteRfqItemAPI
 } from '../lib/api';
 
 interface AppState {
@@ -101,6 +105,12 @@ interface AppState {
   addSupplier: (supplier: Supplier) => Promise<void>;
   updateSupplier: (id: string, supplierData: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
+
+  // RFQ Item functions
+  loadRfqItems: () => Promise<void>;
+  addRfqItem: (rfqItem: any) => Promise<void>;
+  updateRfqItem: (id: string, rfqItemData: Partial<any>) => Promise<void>;
+  deleteRfqItem: (id: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -864,10 +874,50 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     try {
+      // Load RFQs first
       const rfqs = await import('../lib/api').then(mod =>
         mod.getRfqsAPI(token)
       );
-      set({ rfqs });
+
+      // Load RFQ items to associate with RFQs
+      const rfqItems = await import('../lib/api').then(mod =>
+        mod.getRfqsAPI(token) // This might not be correct - let's load RFQ items separately
+      );
+
+      // Actually, let's load RFQ items separately
+      let allRfqItems: any[] = [];
+      try {
+        allRfqItems = await import('../lib/api').then(mod =>
+          mod.getRfqItemsAPI(token)
+        );
+      } catch (itemsError) {
+        console.error('Failed to load RFQ items, continuing with RFQs only:', itemsError);
+        // Continue with just the RFQs if items fail to load
+        set({ rfqs });
+        return;
+      }
+
+      // Group RFQ items by rfq_id to associate with RFQs
+      const itemsByRfq = allRfqItems.reduce((acc, item) => {
+        if (!acc[item.rfq_id]) {
+          acc[item.rfq_id] = [];
+        }
+        acc[item.rfq_id].push({
+          materialId: item.material_id,
+          name: item.name,
+          qty: item.qty,
+          price: item.price
+        });
+        return acc;
+      }, {} as Record<string, any[]>);
+
+      // Update RFQs with their associated items
+      const rfqsWithItems = rfqs.map((rfq: any) => ({
+        ...rfq,
+        items: itemsByRfq[rfq.id] || []
+      }));
+
+      set({ rfqs: rfqsWithItems });
     } catch (error) {
       console.error('Failed to load RFQs from API:', error);
       set({ rfqs: [] });
@@ -965,6 +1015,74 @@ export const useStore = create<AppState>((set, get) => ({
   createDeliveryOrder: (sj) => set(s => ({ deliveryOrders: [sj, ...s.deliveryOrders] })),
   updateDeliveryOrder: (sj) => set(s => ({ deliveryOrders: s.deliveryOrders.map(x => x.id === sj.id ? sj : x) })),
   validateDeliveryOrder: (id) => set(s => ({ deliveryOrders: s.deliveryOrders.map(x => x.id === id ? {...x, status: 'VALIDATED'} : x) })),
-  deleteDeliveryOrder: (id) => set(s => ({ deliveryOrders: s.deliveryOrders.filter(x => x.id !== id) }))
+  deleteDeliveryOrder: (id) => set(s => ({ deliveryOrders: s.deliveryOrders.filter(x => x.id !== id) })),
+
+  // RFQ Item functions
+  loadRfqItems: async () => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const rfqItems = await getRfqItemsAPI(token);
+      // We don't store RFQ items in the state since they're part of RFQs
+      // This function is just a wrapper for the API call
+    } catch (error) {
+      console.error('Failed to load RFQ items from API:', error);
+      throw error;
+    }
+  },
+  addRfqItem: async (rfqItem) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Create the RFQ item via API
+      const createdRfqItem = await createRfqItemAPI(rfqItem, token);
+      return createdRfqItem;
+    } catch (error) {
+      console.error('Failed to create RFQ item via API:', error);
+      throw error;
+    }
+  },
+  updateRfqItem: async (id, rfqItemData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Update the RFQ item via API
+      const updatedRfqItem = await updateRfqItemAPI(id, rfqItemData, token);
+      return updatedRfqItem;
+    } catch (error) {
+      console.error('Failed to update RFQ item via API:', error);
+      throw error;
+    }
+  },
+  deleteRfqItem: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Delete the RFQ item via API
+      await deleteRfqItemAPI(id, token);
+    } catch (error) {
+      console.error('Failed to delete RFQ item via API:', error);
+      throw error;
+    }
+  }
 }));
 

@@ -1028,3 +1028,168 @@ export const deleteSupplierAPI = async (id: string | number, token: string): Pro
     throw new Error(errorData.message || 'Failed to delete supplier');
   }
 };
+
+/**
+ * Convert API response field names to frontend field names for RFQ Item
+ */
+const convertApiRfqItemToFrontend = (apiRfqItem: any): any => {
+  return {
+    id: apiRfqItem.id?.toString(),
+    rfq_id: apiRfqItem.rfq_id?.toString(),
+    material_id: apiRfqItem.material_id?.toString(),
+    name: apiRfqItem.name,
+    qty: apiRfqItem.qty,
+    price: parseFloat(apiRfqItem.price) || 0,
+    created_at: apiRfqItem.created_at,
+    updated_at: apiRfqItem.updated_at,
+  };
+};
+
+/**
+ * Get all RFQ Items API call
+ */
+export const getRfqItemsAPI = async (token: string): Promise<any[]> => {
+  const response = await fetch('http://localhost:8000/api/rfq-items', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch RFQ items');
+  }
+
+  const apiResponse = await response.json();
+  // Handle both array response and paginated response
+  const rfqItemsData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  return rfqItemsData.map(convertApiRfqItemToFrontend);
+};
+
+/**
+ * Get single RFQ Item API call
+ */
+export const getRfqItemAPI = async (id: string | number, token: string): Promise<any> => {
+  const response = await fetch(`http://localhost:8000/api/rfq-items/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch RFQ item with ID: ${id}`);
+  }
+
+  const apiRfqItem = await response.json();
+  return convertApiRfqItemToFrontend(apiRfqItem);
+};
+
+/**
+ * Create RFQ Item API call
+ */
+export interface CreateRfqItemData {
+  rfq_id: string | number;
+  material_id: string | number;
+  name: string;
+  qty: number;
+  price?: number;
+}
+
+export const createRfqItemAPI = async (rfqItemData: CreateRfqItemData, token: string): Promise<any> => {
+  const response = await fetch('http://localhost:8000/api/rfq-items', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(rfqItemData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create RFQ item');
+    }
+  }
+
+  const createdRfqItem = await response.json();
+  return convertApiRfqItemToFrontend(createdRfqItem);
+};
+
+/**
+ * Update RFQ Item API call
+ */
+export const updateRfqItemAPI = async (id: string | number, rfqItemData: Partial<any>, token: string): Promise<any> => {
+  const apiRfqItemData: any = {
+    ...(rfqItemData.rfq_id !== undefined && { rfq_id: rfqItemData.rfq_id }),
+    ...(rfqItemData.material_id !== undefined && { material_id: rfqItemData.material_id }),
+    ...(rfqItemData.name !== undefined && { name: rfqItemData.name }),
+    ...(rfqItemData.qty !== undefined && { qty: rfqItemData.qty }),
+    ...(rfqItemData.price !== undefined && { price: rfqItemData.price }),
+  };
+
+  const response = await fetch(`http://localhost:8000/api/rfq-items/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiRfqItemData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('RFQ item not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update RFQ item');
+    }
+  }
+
+  const updatedRfqItem = await response.json();
+  return convertApiRfqItemToFrontend(updatedRfqItem);
+};
+
+/**
+ * Delete RFQ Item API call
+ */
+export const deleteRfqItemAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/rfq-items/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('RFQ item not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete RFQ item');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete RFQ item');
+  }
+};

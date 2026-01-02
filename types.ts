@@ -203,6 +203,17 @@ export interface PurchaseOrder {
   grandTotal: number;
 }
 
+export interface RFQItem {
+  id: string;
+  rfq_id: string;
+  material_id: string;
+  name: string;
+  qty: number;
+  price: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ReceivingGoods {
   id: string;
   code: string;

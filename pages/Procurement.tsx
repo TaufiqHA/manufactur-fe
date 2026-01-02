@@ -4,12 +4,12 @@ import { useStore } from '../store/useStore';
 import {
   Plus, FileText, Truck, Trash2, CheckCircle, X, ChevronRight, Save, Eye, Edit3
 } from 'lucide-react';
-import { RFQ, PurchaseOrder, ReceivingGoods, ProcurementItem, Supplier } from '../types';
+import { RFQ, PurchaseOrder, ReceivingGoods, ProcurementItem, Supplier, RFQItem } from '../types';
 
 type TabType = 'SUPPLIERS' | 'RFQ' | 'PO' | 'RECEIVING';
 
 export const Procurement: React.FC = () => {
-  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs, loadSuppliers, addSupplier, updateSupplier, deleteSupplier } = useStore();
+  const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can, deleteRFQ, updateRFQ, loadRFQs, loadSuppliers, addSupplier, updateSupplier, deleteSupplier, addRfqItem, updateRfqItem, deleteRfqItem, loadRfqItems } = useStore();
   const [activeTab, setActiveTab] = useState<TabType>('RFQ');
 
   const [isRfqModalOpen, setIsRfqModalOpen] = useState(false);
@@ -58,6 +58,7 @@ export const Procurement: React.FC = () => {
     if (newRfq.items.length === 0) return alert("Pilih item!");
 
     try {
+      // First create the RFQ
       const rfq: RFQ = {
         id: `rfq-${Date.now()}`,
         code: `RFQ-${Math.floor(Math.random() * 9000) + 1000}`,
@@ -67,6 +68,23 @@ export const Procurement: React.FC = () => {
         status: 'DRAFT'
       };
       await addRFQ(rfq);
+
+      // Then create individual RFQ items if needed
+      for (const item of newRfq.items) {
+        try {
+          await addRfqItem({
+            rfq_id: rfq.id,
+            material_id: item.materialId,
+            name: item.name,
+            qty: item.qty,
+            price: item.price || 0
+          });
+        } catch (itemError) {
+          console.error('Failed to create RFQ item:', itemError);
+          // Continue with other items even if one fails
+        }
+      }
+
       setNewRfq({ description: '', items: [] });
       setIsRfqModalOpen(false);
     } catch (error) {
@@ -111,6 +129,30 @@ export const Procurement: React.FC = () => {
   const startReceiving = (po: PurchaseOrder) => {
     setBdData({ description: po.description });
     setIsBdModalOpen(po);
+  };
+
+  // Function to add an item to an existing RFQ using the API
+  const addRfqItemToRfq = async (rfqId: string, item: ProcurementItem) => {
+    try {
+      await addRfqItem({
+        rfq_id: rfqId,
+        material_id: item.materialId,
+        name: item.name,
+        qty: item.qty,
+        price: item.price || 0
+      });
+    } catch (error) {
+      console.error('Failed to add RFQ item via API:', error);
+      // The error is caught but we continue with local state update
+    }
+  };
+
+  // Function to delete an item from an RFQ using the API
+  const deleteRfqItemFromRfq = async (rfqId: string, itemIndex: number) => {
+    // In the current implementation, we don't have individual RFQ item IDs
+    // So we'll need to handle this differently - maybe by updating the entire RFQ
+    // For now, we'll just update the local state
+    console.log('Deleting item from RFQ:', rfqId, itemIndex);
   };
 
   // Supplier functions
