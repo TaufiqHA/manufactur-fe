@@ -2219,3 +2219,249 @@ export const deleteProjectItemAPI = async (id: string | number, token: string): 
     throw new Error(errorData.message || 'Failed to delete project item');
   }
 };
+
+/**
+ * Convert API response field names to frontend field names for Machine
+ */
+const convertApiMachineToFrontend = (apiMachine: any): any => {
+  // Extract the main user associated with the machine from the user field
+  const mainUserPersonnel = apiMachine.user ? [{
+    id: apiMachine.user.id?.toString() || apiMachine.user.id,
+    name: apiMachine.user.username || apiMachine.user.name || '',
+    role: 'PIC', // Default role for the main user
+    shift: 'SHIFT_1' // Default shift
+  }] : [];
+
+  // Combine with any additional personnel if they exist
+  const additionalPersonnel = Array.isArray(apiMachine.personnel) ? apiMachine.personnel.map((p: any) => ({
+    id: p.id?.toString() || p.id,
+    name: p.name || p.username || p.user?.name || '',
+    role: p.role || p.position || 'OPERATOR',
+    shift: p.shift || 'SHIFT_1'
+  })) : [];
+
+  return {
+    id: apiMachine.id?.toString(),
+    userId: apiMachine.user_id?.toString(),
+    code: apiMachine.code,
+    name: apiMachine.name,
+    type: apiMachine.type,
+    capacityPerHour: apiMachine.capacity_per_hour,
+    status: apiMachine.status,
+    isMaintenance: apiMachine.is_maintenance ? true : false, // Convert 0/1 to boolean
+    createdAt: apiMachine.created_at,
+    updatedAt: apiMachine.updated_at,
+    personnel: [...mainUserPersonnel, ...additionalPersonnel],
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for Machine
+ */
+const convertFrontendMachineToApi = (frontendMachine: any, isCreate: boolean = false): any => {
+  const apiMachine: any = {
+    user_id: frontendMachine.userId || frontendMachine.user_id,
+    code: frontendMachine.code,
+    name: frontendMachine.name,
+    type: frontendMachine.type,
+    capacity_per_hour: frontendMachine.capacityPerHour,
+    status: frontendMachine.status,
+    is_maintenance: frontendMachine.isMaintenance,
+  };
+
+  // Handle personnel data if it exists
+  if (Array.isArray(frontendMachine.personnel) && frontendMachine.personnel.length > 0) {
+    // For now, we'll just send the personnel array as is
+    // In a real implementation, you might want to separate the main user from other personnel
+    apiMachine.personnel = frontendMachine.personnel.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      shift: p.shift
+    }));
+  }
+
+  // Only include id if it's not for creation
+  if (!isCreate && frontendMachine.id) {
+    apiMachine.id = frontendMachine.id;
+  }
+
+  return apiMachine;
+};
+
+/**
+ * Get all machines API call
+ */
+export const getMachinesAPI = async (token: string): Promise<any[]> => {
+  const response = await fetch('http://localhost:8000/api/machines', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to fetch machines');
+  }
+
+  const apiResponse = await response.json();
+  // Handle both array response and paginated response
+  const machinesData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  return machinesData.map(convertApiMachineToFrontend);
+};
+
+/**
+ * Get single machine API call
+ */
+export const getMachineAPI = async (id: string | number, token: string): Promise<any> => {
+  const response = await fetch(`http://localhost:8000/api/machines/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Failed to fetch machine with ID: ${id}`);
+  }
+
+  const apiMachine = await response.json();
+  return convertApiMachineToFrontend(apiMachine);
+};
+
+/**
+ * Create machine API call
+ */
+export interface CreateMachineData {
+  user_id: string | number;
+  code: string;
+  name: string;
+  type: string;
+  capacity_per_hour: number;
+  status: string;
+  is_maintenance: boolean;
+}
+
+export const createMachineAPI = async (machineData: CreateMachineData, token: string): Promise<any> => {
+  const response = await fetch('http://localhost:8000/api/machines', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(machineData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to create machine');
+    }
+  }
+
+  const createdMachine = await response.json();
+  return convertApiMachineToFrontend(createdMachine);
+};
+
+/**
+ * Update machine API call
+ */
+export const updateMachineAPI = async (id: string | number, machineData: Partial<any>, token: string): Promise<any> => {
+  const apiMachineData = {
+    ...(machineData.userId !== undefined && { user_id: machineData.userId }),
+    ...(machineData.user_id !== undefined && { user_id: machineData.user_id }),
+    ...(machineData.code !== undefined && { code: machineData.code }),
+    ...(machineData.name !== undefined && { name: machineData.name }),
+    ...(machineData.type !== undefined && { type: machineData.type }),
+    ...(machineData.capacityPerHour !== undefined && { capacity_per_hour: machineData.capacityPerHour }),
+    ...(machineData.capacity_per_hour !== undefined && { capacity_per_hour: machineData.capacity_per_hour }),
+    ...(machineData.status !== undefined && { status: machineData.status }),
+    ...(machineData.isMaintenance !== undefined && { is_maintenance: machineData.isMaintenance }),
+    ...(machineData.is_maintenance !== undefined && { is_maintenance: machineData.is_maintenance }),
+  };
+
+  const response = await fetch(`http://localhost:8000/api/machines/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(apiMachineData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+    } else if (response.status === 404) {
+      throw new Error('Machine not found');
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || 'Failed to update machine');
+    }
+  }
+
+  const updatedMachine = await response.json();
+  return convertApiMachineToFrontend(updatedMachine);
+};
+
+/**
+ * Delete machine API call
+ */
+export const deleteMachineAPI = async (id: string | number, token: string): Promise<void> => {
+  const response = await fetch(`http://localhost:8000/api/machines/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error('Machine not found');
+    } else {
+      throw new Error(errorData.message || 'Failed to delete machine');
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to delete machine');
+  }
+};
+
+/**
+ * Toggle machine maintenance API call
+ */
+export const toggleMachineMaintenanceAPI = async (id: string | number, token: string): Promise<any> => {
+  const response = await fetch(`http://localhost:8000/api/machines/${id}/toggle-maintenance`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Failed to toggle machine maintenance');
+  }
+
+  const updatedMachine = await response.json();
+  return convertApiMachineToFrontend(updatedMachine);
+};

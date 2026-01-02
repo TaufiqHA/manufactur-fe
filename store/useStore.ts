@@ -101,9 +101,10 @@ interface AppState {
   deleteMaterial: (id: string) => void;
   adjustStock: (matId: string, amount: number) => void;
   loadMaterials: () => Promise<void>;
+  loadMachines: () => Promise<void>;
   addMachine: (m: Machine) => void;
   updateMachine: (um: Machine) => void;
-  deleteMachine: (id: string) => boolean;
+  deleteMachine: (id: string) => Promise<boolean>;
   toggleMaintenance: (macId: string) => void;
   addUser: (u: User) => void;
   updateUser: (u: User) => void;
@@ -167,7 +168,7 @@ export const useStore = create<AppState>((set, get) => ({
   projects: [],
   materials: [],
   items: MOCK_ITEMS,
-  machines: MOCK_MACHINES,
+  machines: [],
   tasks: MOCK_TASKS,
   users: [],
   logs: MOCK_LOGS,
@@ -184,9 +185,10 @@ export const useStore = create<AppState>((set, get) => ({
       try {
         const projects = await getProjectsAPI(token);
         const materials = await getMaterialsAPI(token);
+        const machines = await import('../lib/api').then(mod => mod.getMachinesAPI(token));
         const rfqs = await import('../lib/api').then(mod => mod.getRfqsAPI(token));
         const pos = await import('../lib/api').then(mod => mod.getPurchaseOrdersAPI(token));
-        set({ projects, materials, rfqs, pos });
+        set({ projects, materials, machines, rfqs, pos });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -199,10 +201,10 @@ export const useStore = create<AppState>((set, get) => ({
           localStorage.removeItem('currentUser');
         }
 
-        set({ projects: [], materials: [], rfqs: [], pos: [] });
+        set({ projects: [], materials: [], machines: [], rfqs: [], pos: [] });
       }
     } else {
-      set({ projects: [], materials: [], rfqs: [], pos: [] });
+      set({ projects: [], materials: [], machines: [], rfqs: [], pos: [] });
     }
   },
 
@@ -229,11 +231,12 @@ export const useStore = create<AppState>((set, get) => ({
       localStorage.setItem('currentUser', JSON.stringify(user));
       localStorage.setItem('token', token);
 
-      // Load projects, materials, RFQs, and POs after successful login
+      // Load projects, materials, machines, RFQs, and POs after successful login
       if (token) {
         try {
           const projects = await getProjectsAPI(token);
-          set({ projects });
+          const machines = await import('../lib/api').then(mod => mod.getMachinesAPI(token));
+          set({ projects, machines });
           // Load materials using the loadMaterials function
           await get().loadMaterials();
           // Load RFQs using the new loadRFQs function
@@ -242,11 +245,11 @@ export const useStore = create<AppState>((set, get) => ({
           await get().loadPOs();
         } catch (error) {
           // Set empty arrays if loading fails
-          set({ projects: [], materials: [], rfqs: [], pos: [] });
+          set({ projects: [], materials: [], machines: [], rfqs: [], pos: [] });
         }
       } else {
-        // If no token, set empty projects, materials, RFQs, and POs
-        set({ projects: [], materials: [], rfqs: [], pos: [] });
+        // If no token, set empty projects, materials, machines, RFQs, and POs
+        set({ projects: [], materials: [], machines: [], rfqs: [], pos: [] });
       }
 
       return true;
@@ -265,7 +268,7 @@ export const useStore = create<AppState>((set, get) => ({
       });
     }
 
-    set({ currentUser: null, token: null, projects: [], materials: [], users: [] });
+    set({ currentUser: null, token: null, projects: [], materials: [], machines: [], users: [] });
     localStorage.removeItem('currentUser');
     localStorage.removeItem('token');
   },
@@ -703,20 +706,21 @@ export const useStore = create<AppState>((set, get) => ({
   reloadProjects: async () => {
     const token = get().token;
     if (!token) {
-      set({ projects: [], materials: [], users: [], rfqs: [], pos: [] });
+      set({ projects: [], materials: [], machines: [], users: [], rfqs: [], pos: [] });
       return;
     }
 
     try {
       const projects = await getProjectsAPI(token);
       const materials = await getMaterialsAPI(token);
+      const machines = await import('../lib/api').then(mod => mod.getMachinesAPI(token));
       const rfqs = await import('../lib/api').then(mod => mod.getRfqsAPI(token));
       const pos = await import('../lib/api').then(mod => mod.getPurchaseOrdersAPI(token));
       const { getUsersAPI } = await import('../lib/api');
       const users = await getUsersAPI(token);
-      set({ projects, materials, rfqs, pos, users });
+      set({ projects, materials, machines, rfqs, pos, users });
     } catch (error) {
-      set({ projects: [], materials: [], rfqs: [], pos: [], users: [] });
+      set({ projects: [], materials: [], machines: [], rfqs: [], pos: [], users: [] });
     }
   },
 
@@ -825,10 +829,121 @@ export const useStore = create<AppState>((set, get) => ({
       throw error;
     }
   },
-  addMachine: (m) => set(s => ({ machines: [...s.machines, m] })),
-  updateMachine: (m) => set(s => ({ machines: s.machines.map(x => x.id === m.id ? m : x) })),
-  deleteMachine: (id) => { set(s => ({ machines: s.machines.filter(x => x.id !== id) })); return true; },
-  toggleMaintenance: (id) => set(s => ({ machines: s.machines.map(x => x.id === id ? {...x, isMaintenance: !x.isMaintenance} : x) })),
+  addMachine: async (m) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ machines: [...s.machines, m] }));
+      return;
+    }
+
+    try {
+      // Format the machine data for the API
+      const machineData = {
+        user_id: m.userId,
+        code: m.code,
+        name: m.name,
+        type: m.type,
+        capacity_per_hour: m.capacityPerHour,
+        status: m.status,
+        is_maintenance: m.isMaintenance
+      };
+
+      // Create the machine via API
+      const createdMachine = await import('../lib/api').then(mod =>
+        mod.createMachineAPI(machineData, token)
+      );
+
+      // Update the state with the created machine from the API (which may have additional fields)
+      set(s => ({ machines: [...s.machines, createdMachine] }));
+    } catch (error) {
+      console.error('Failed to create machine via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ machines: [...s.machines, m] }));
+      throw error;
+    }
+  },
+  updateMachine: async (m) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ machines: s.machines.map(x => x.id === m.id ? m : x) }));
+      return;
+    }
+
+    try {
+      // Format the machine data for the API
+      const machineData = {
+        user_id: m.userId,
+        code: m.code,
+        name: m.name,
+        type: m.type,
+        capacity_per_hour: m.capacityPerHour,
+        status: m.status,
+        is_maintenance: m.isMaintenance
+      };
+
+      // Update the machine via API
+      const updatedMachine = await import('../lib/api').then(mod =>
+        mod.updateMachineAPI(m.id, machineData, token)
+      );
+
+      // Update the state with the updated machine from the API
+      set(s => ({ machines: s.machines.map(x => x.id === m.id ? updatedMachine : x) }));
+    } catch (error) {
+      console.error('Failed to update machine via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ machines: s.machines.map(x => x.id === m.id ? m : x) }));
+      throw error;
+    }
+  },
+  deleteMachine: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ machines: s.machines.filter(x => x.id !== id) }));
+      return true;
+    }
+
+    try {
+      // Delete the machine via API
+      await import('../lib/api').then(mod =>
+        mod.deleteMachineAPI(id, token)
+      );
+
+      // Update the state to remove the deleted machine
+      set(s => ({ machines: s.machines.filter(x => x.id !== id) }));
+      return true;
+    } catch (error) {
+      console.error('Failed to delete machine via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ machines: s.machines.filter(x => x.id !== id) }));
+      return true;
+    }
+  },
+  toggleMaintenance: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({ machines: s.machines.map(x => x.id === id ? {...x, isMaintenance: !x.isMaintenance} : x) }));
+      return;
+    }
+
+    try {
+      // Toggle maintenance via API
+      const updatedMachine = await import('../lib/api').then(mod =>
+        mod.toggleMachineMaintenanceAPI(id, token)
+      );
+
+      // Update the state with the updated machine from the API
+      set(s => ({ machines: s.machines.map(x => x.id === id ? updatedMachine : x) }));
+    } catch (error) {
+      console.error('Failed to toggle machine maintenance via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({ machines: s.machines.map(x => x.id === id ? {...x, isMaintenance: !x.isMaintenance} : x) }));
+      throw error;
+    }
+  },
   addUser: (u) => set(s => ({ users: [...s.users, u] })),
   updateUser: (u) => set(s => ({ users: s.users.map(x => x.id === u.id ? u : x) })),
   deleteUser: (id) => set(s => ({ users: s.users.filter(x => x.id !== id) })),
@@ -1083,6 +1198,22 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.error('Failed to load RFQs from API:', error);
       set({ rfqs: [] });
+      throw error;
+    }
+  },
+  loadMachines: async () => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const machines = await import('../lib/api').then(mod => mod.getMachinesAPI(token));
+      set({ machines });
+    } catch (error) {
+      console.error('Failed to load machines from API:', error);
+      set({ machines: [] });
       throw error;
     }
   },

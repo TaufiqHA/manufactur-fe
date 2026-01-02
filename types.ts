@@ -95,6 +95,7 @@ export type MachineStatus = 'IDLE' | 'RUNNING' | 'MAINTENANCE' | 'OFFLINE' | 'DO
 
 export interface Machine {
   id: string;
+  userId?: string;
   code: string;
   name: string;
   type: ProcessStep;
