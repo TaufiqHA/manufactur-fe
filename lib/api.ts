@@ -2626,8 +2626,26 @@ const convertApiSubAssemblyToFrontend = (apiSubAssembly: any): SubAssembly => {
       apiSubAssembly.material_id?.toString() || apiSubAssembly.materialId,
     processes: Array.isArray(apiSubAssembly.processes)
       ? apiSubAssembly.processes
-      : [],
-    stepStats: apiSubAssembly.step_stats || apiSubAssembly.stepStats || {},
+      : typeof apiSubAssembly.processes === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(apiSubAssembly.processes);
+            } catch (e) {
+              console.error('Error parsing processes:', e);
+              return [];
+            }
+          })()
+        : apiSubAssembly.processes || [],
+    stepStats: typeof apiSubAssembly.step_stats === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(apiSubAssembly.step_stats);
+          } catch (e) {
+            console.error('Error parsing step_stats:', e);
+            return {};
+          }
+        })()
+      : apiSubAssembly.step_stats || {},
     isLocked: apiSubAssembly.is_locked || apiSubAssembly.isLocked || false,
   };
 };
@@ -2642,17 +2660,19 @@ const convertFrontendSubAssemblyToApi = (
   const apiSubAssembly: any = {
     item_id: frontendSubAssembly.item_id || frontendSubAssembly.itemId,
     name: frontendSubAssembly.name,
-    qty_per_parent: frontendSubAssembly.qtyPerParent,
-    total_needed: frontendSubAssembly.totalNeeded,
-    completed_qty: frontendSubAssembly.completedQty,
-    total_produced: frontendSubAssembly.totalProduced,
-    consumed_qty: frontendSubAssembly.consumedQty,
-    material_id: frontendSubAssembly.materialId,
-    processes: Array.isArray(frontendSubAssembly.processes)
+    qty_per_parent: frontendSubAssembly.qty_per_parent || frontendSubAssembly.qtyPerParent,
+    total_needed: frontendSubAssembly.total_needed || frontendSubAssembly.totalNeeded,
+    completed_qty: frontendSubAssembly.completed_qty || frontendSubAssembly.completedQty,
+    total_produced: frontendSubAssembly.total_produced || frontendSubAssembly.totalProduced,
+    consumed_qty: frontendSubAssembly.consumed_qty || frontendSubAssembly.consumedQty,
+    material_id: frontendSubAssembly.material_id || frontendSubAssembly.materialId,
+    processes: typeof frontendSubAssembly.processes === 'string'
       ? frontendSubAssembly.processes
-      : [],
-    step_stats: frontendSubAssembly.stepStats || {},
-    is_locked: frontendSubAssembly.isLocked,
+      : JSON.stringify(frontendSubAssembly.processes || []),
+    step_stats: typeof frontendSubAssembly.step_stats === 'string'
+      ? frontendSubAssembly.step_stats
+      : JSON.stringify(frontendSubAssembly.step_stats || {}),
+    is_locked: frontendSubAssembly.is_locked !== undefined ? frontendSubAssembly.is_locked : false,
   };
 
   // Only include id if it's not for creation
@@ -2731,7 +2751,7 @@ export const getSubAssemblyAPI = async (
   id: string | number,
   token: string
 ): Promise<SubAssembly> => {
-  const response = await fetch(`${getBaseUrl()}/sub-assemblies/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/sub-assemblies/${id}`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -2771,15 +2791,15 @@ export const createSubAssemblyAPI = async (
   subAssemblyData: CreateSubAssemblyData,
   token: string
 ): Promise<SubAssembly> => {
-  const response = await fetch(`${getBaseUrl()}/sub-assemblies`, {
+  const convertedData = convertFrontendSubAssemblyToApi(subAssemblyData, true);
+
+  const response = await fetch(`${getBaseUrl()}/api/sub-assemblies`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(
-      convertFrontendSubAssemblyToApi(subAssemblyData, true)
-    ),
+    body: JSON.stringify(convertedData),
   });
 
   if (!response.ok) {
@@ -2814,7 +2834,7 @@ export const updateSubAssemblyAPI = async (
 ): Promise<SubAssembly> => {
   const apiSubAssemblyData = convertFrontendSubAssemblyToApi(subAssemblyData);
 
-  const response = await fetch(`${getBaseUrl()}/sub-assemblies/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/sub-assemblies/${id}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -2854,7 +2874,7 @@ export const deleteSubAssemblyAPI = async (
   id: string | number,
   token: string
 ): Promise<void> => {
-  const response = await fetch(`${getBaseUrl()}/sub-assemblies/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/sub-assemblies/${id}`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -3118,13 +3138,266 @@ export const updateMachineAPI = async (
 };
 
 /**
- * Delete machine API call
+ * Convert API response field names to frontend field names for BOM Item
  */
-export const deleteMachineAPI = async (
+const convertApiBomItemToFrontend = (apiBomItem: any): any => {
+  return {
+    id: apiBomItem.id?.toString(),
+    item_id: apiBomItem.item_id?.toString(),
+    material_id: apiBomItem.material_id?.toString(),
+    quantity_per_unit: apiBomItem.quantity_per_unit || 0,
+    total_required: apiBomItem.total_required || 0,
+    allocated: apiBomItem.allocated || 0,
+    realized: apiBomItem.realized || 0,
+    created_at: apiBomItem.created_at,
+    updated_at: apiBomItem.updated_at,
+    item: apiBomItem.item
+      ? {
+          id: apiBomItem.item.id?.toString(),
+          project_id: apiBomItem.item.project_id?.toString(),
+          name: apiBomItem.item.name,
+          dimensions: apiBomItem.item.dimensions,
+          thickness: apiBomItem.item.thickness,
+          qty_set: apiBomItem.item.qty_set,
+          quantity: apiBomItem.item.quantity,
+          unit: apiBomItem.item.unit,
+          is_bom_locked: apiBomItem.item.is_bom_locked,
+          is_workflow_locked: apiBomItem.item.is_workflow_locked,
+          flow_type: apiBomItem.item.flow_type,
+          warehouse_qty: apiBomItem.item.warehouse_qty || 0,
+          shipped_qty: apiBomItem.item.shipped_qty || 0,
+          created_at: apiBomItem.item.created_at,
+          updated_at: apiBomItem.item.updated_at,
+        }
+      : undefined,
+    material: apiBomItem.material
+      ? {
+          id: apiBomItem.material.id?.toString(),
+          code: apiBomItem.material.code,
+          name: apiBomItem.material.name,
+          unit: apiBomItem.material.unit,
+          current_stock: apiBomItem.material.current_stock || 0,
+          safety_stock: apiBomItem.material.safety_stock || 0,
+          price_per_unit: parseFloat(apiBomItem.material.price_per_unit) || 0,
+          category: apiBomItem.material.category,
+          created_at: apiBomItem.material.created_at,
+          updated_at: apiBomItem.material.updated_at,
+        }
+      : undefined,
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for BOM Item
+ */
+const convertFrontendBomItemToApi = (
+  frontendBomItem: any,
+  isCreate: boolean = false
+): any => {
+  const apiBomItem: any = {
+    item_id: frontendBomItem.item_id || frontendBomItem.itemId,
+    material_id: frontendBomItem.material_id || frontendBomItem.materialId,
+    quantity_per_unit: frontendBomItem.quantity_per_unit || frontendBomItem.quantityPerUnit,
+    total_required: frontendBomItem.total_required || frontendBomItem.totalRequired,
+    allocated: frontendBomItem.allocated || 0,
+    realized: frontendBomItem.realized || 0,
+  };
+
+  // Only include id if it's not for creation
+  if (!isCreate && frontendBomItem.id) {
+    apiBomItem.id = frontendBomItem.id;
+  }
+
+  return apiBomItem;
+};
+
+/**
+ * Get all BOM items API call
+ */
+export const getBomItemsAPI = async (
+  token: string,
+  projectId?: string | number
+): Promise<any[]> => {
+  let url = `${getBaseUrl()}/api/bom-items`;
+  if (projectId) {
+    // If we need to filter by project, we'll need to get items first and then get BOM items
+    // For now, we'll return all BOM items and filter on the frontend if needed
+    url += `?project_id=${projectId}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      let errorData: any = {};
+      let responseText = "";
+
+      try {
+        responseText = await response.text();
+        errorData = JSON.parse(responseText);
+      } catch (e) {
+        errorData = { message: responseText || "Unknown error" };
+      }
+
+      const errorMessage =
+        errorData.message ||
+        (errorData.errors &&
+          Object.values(errorData.errors).flat().join(", ")) ||
+        `Failed to fetch BOM items (${response.status})`;
+
+      throw new Error(errorMessage);
+    }
+
+    const apiResponse = await response.json();
+
+    // Handle both paginated and array responses
+    const bomItemsData = Array.isArray(apiResponse.data)
+      ? apiResponse.data
+      : apiResponse.data?.data || apiResponse.data || [];
+    return bomItemsData.map(convertApiBomItemToFrontend);
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      throw new Error(
+        `Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`
+      );
+    }
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Get single BOM item API call
+ */
+export const getBomItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
+  const response = await fetch(`${getBaseUrl()}/api/bom-items/${id}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.message || `Failed to fetch BOM item with ID: ${id}`
+    );
+  }
+
+  const apiBomItem = await response.json();
+  return convertApiBomItemToFrontend(apiBomItem);
+};
+
+/**
+ * Create BOM item API call
+ */
+export interface CreateBomItemData {
+  item_id: string | number;
+  material_id: string | number;
+  quantity_per_unit: number;
+  total_required: number;
+  allocated?: number;
+  realized?: number;
+}
+
+export const createBomItemAPI = async (
+  bomItemData: CreateBomItemData,
+  token: string
+): Promise<any> => {
+  const response = await fetch(`${getBaseUrl()}/api/bom-items`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(convertFrontendBomItemToApi(bomItemData, true)),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to create BOM item");
+    }
+  }
+
+  const createdBomItem = await response.json();
+  return convertApiBomItemToFrontend(
+    createdBomItem.data || createdBomItem
+  );
+};
+
+/**
+ * Update BOM item API call
+ */
+export const updateBomItemAPI = async (
+  id: string | number,
+  bomItemData: Partial<any>,
+  token: string
+): Promise<any> => {
+  const apiBomItemData = convertFrontendBomItemToApi(bomItemData);
+
+  const response = await fetch(`${getBaseUrl()}/api/bom-items/${id}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(apiBomItemData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else if (response.status === 404) {
+      throw new Error("BOM item not found");
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to update BOM item");
+    }
+  }
+
+  const updatedBomItem = await response.json();
+  return convertApiBomItemToFrontend(
+    updatedBomItem.data || updatedBomItem
+  );
+};
+
+/**
+ * Delete BOM item API call
+ */
+export const deleteBomItemAPI = async (
   id: string | number,
   token: string
 ): Promise<void> => {
-  const response = await fetch(`${getBaseUrl()}/api/machines/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/bom-items/${id}`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -3136,44 +3409,16 @@ export const deleteMachineAPI = async (
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error("Machine not found");
+      throw new Error("BOM item not found");
     } else {
-      throw new Error(errorData.message || "Failed to delete machine");
+      throw new Error(errorData.message || "Failed to delete BOM item");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || "Failed to delete machine");
+    throw new Error(errorData.message || "Failed to delete BOM item");
   }
 };
 
-/**
- * Toggle machine maintenance API call
- */
-export const toggleMachineMaintenanceAPI = async (
-  id: string | number,
-  token: string
-): Promise<any> => {
-  const response = await fetch(
-    `${getBaseUrl()}/api/machines/${id}/toggle-maintenance`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.message || "Failed to toggle machine maintenance"
-    );
-  }
-
-  const updatedMachine = await response.json();
-  return convertApiMachineToFrontend(updatedMachine);
-};

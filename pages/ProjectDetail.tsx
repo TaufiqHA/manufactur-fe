@@ -4,12 +4,12 @@ import { useStore } from '../store/useStore';
 import {
   Plus, Trash2, X, Box, Layers, Settings2, Component, ArrowRight, Info, Lock, Save, Trash, AlertCircle, TrendingUp, CheckCircle2, ChevronLeft, Target, Clock, Hammer, Calendar, ClipboardList
 } from 'lucide-react';
-import { RAW_STEPS, ASSEMBLY_STEPS, ProcessStep, ItemStepConfig, Project } from '../types';
+import { RAW_STEPS, ASSEMBLY_STEPS, ProcessStep, ItemStepConfig, Project, BomItem } from '../types';
 
 export const ProjectDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { projects, items, machines, materials, tasks, logs, addProjectItem, deleteProjectItem, validateWorkflow, addSubAssembly, deleteSubAssembly, lockSubAssembly, loadProjectItems, loadSubAssemblies } = useStore();
+  const { projects, items, machines, materials, tasks, logs, addProjectItem, deleteProjectItem, validateWorkflow, addSubAssembly, deleteSubAssembly, lockSubAssembly, loadProjectItems, loadSubAssemblies, loadBomItems, addBomItem, updateBomItem, deleteBomItem } = useStore();
 
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState<string | null>(null);
@@ -21,8 +21,19 @@ export const ProjectDetail: React.FC = () => {
   const [projectData, setProjectData] = useState<Project | null>(null);
 
   const [newItem, setNewItem] = useState({ name: '', dimensions: '', thickness: '', qtySet: 1, unit: 'PCS', flowType: 'NEW' as 'OLD' | 'NEW' });
-  const [newSub, setNewSub] = useState({ name: '', qtyPerParent: 1, materialId: '', processes: [] as ProcessStep[] });
+  const [newSub, setNewSub] = useState({
+    name: '',
+    qtyPerParent: 1,
+    materialId: '',
+    processes: [] as ProcessStep[],
+    stepStats: {} as any,
+    isLocked: false
+  });
   const [workflowConfig, setWorkflowConfig] = useState<ItemStepConfig[]>([]);
+
+  // BOM Item state
+  const [isBomModalOpen, setIsBomModalOpen] = useState(false);
+  const [newBomItem, setNewBomItem] = useState({ itemId: '', materialId: '', quantityPerUnit: 1, totalRequired: 0, allocated: 0, realized: 0 });
 
   const project = projectData || projects.find(p => p.id === id);
   const projectItems = items.filter(i => i.projectId === id);
@@ -79,7 +90,9 @@ export const ProjectDetail: React.FC = () => {
           await loadProjectItems(id);
           // Load sub assemblies for the project items
           await loadSubAssemblies();
-          // Note: loadProjectItems and loadSubAssemblies will handle errors gracefully and not throw
+          // Load BOM items for the project
+          await loadBomItems(id);
+          // Note: loadProjectItems, loadSubAssemblies, and loadBomItems will handle errors gracefully and not throw
         }
       } catch (error) {
         // Error handling for project data loading
@@ -89,7 +102,7 @@ export const ProjectDetail: React.FC = () => {
     };
 
     loadProjectData();
-  }, [id, projects, loadProjectItems, loadSubAssemblies]);
+  }, [id, projects, loadProjectItems, loadSubAssemblies, loadBomItems]);
 
   // Update project progress when tasks change
   useEffect(() => {
@@ -140,19 +153,62 @@ export const ProjectDetail: React.FC = () => {
   };
 
   const handleAddSub = async (itemId: string) => {
-    if (!newSub.name || !newSub.materialId || newSub.processes.length === 0) {
-       alert("Lengkapi Nama, Material, dan Tahapan Proses!");
+    if (!newSub.name || !newSub.materialId || (Array.isArray(newSub.processes) ? newSub.processes.length === 0 : true) || newSub.qtyPerParent <= 0) {
+       alert("Lengkapi Nama, Material, Qty per Parent, dan Tahapan Proses!");
        return;
     }
     setSubAssemblyLoading(true);
     try {
+      const item = items.find(i => i.id === itemId);
+      if (!item) {
+        throw new Error('Item not found');
+      }
+
+      // Calculate total needed based on item quantity and qtyPerParent
+      const totalNeeded = item.quantity * newSub.qtyPerParent;
+
+      // Add the sub-assembly
       await addSubAssembly(itemId, {
-        ...newSub, id: `sa-${Date.now()}`,
-        totalNeeded: (items.find(i=>i.id===itemId)?.quantity || 0) * newSub.qtyPerParent,
-        completedQty: 0, totalProduced: 0, consumedQty: 0, stepStats: {}, isLocked: false
+        id: `sa-${Date.now()}`,
+        name: newSub.name || '',
+        qtyPerParent: newSub.qtyPerParent || 1,
+        totalNeeded: totalNeeded || 0,
+        completedQty: 0,
+        totalProduced: 0,
+        consumedQty: 0,
+        materialId: newSub.materialId || '',
+        processes: Array.isArray(newSub.processes) ? newSub.processes : [],
+        stepStats: newSub.stepStats || {},
+        isLocked: newSub.isLocked || false
       });
-      setNewSub({ name: '', qtyPerParent: 1, materialId: '', processes: [] });
+
+      // Automatically create a corresponding BOM item for the sub-assembly
+      const bomItemData = {
+        item_id: itemId,
+        material_id: newSub.materialId,
+        quantity_per_unit: newSub.qtyPerParent,
+        total_required: totalNeeded,
+        allocated: 0,
+        realized: 0
+      };
+
+      await addBomItem(bomItemData);
+
+      // Reload BOM items after adding
+      if (id) {
+        await loadBomItems(id);
+      }
+
+      setNewSub({
+        name: '',
+        qtyPerParent: 1,
+        materialId: '',
+        processes: [],
+        stepStats: {},
+        isLocked: false
+      });
     } catch (error) {
+      console.error('Error adding sub assembly:', error);
       alert('Gagal menambahkan sub assembly. Silakan coba lagi.');
     } finally {
       setSubAssemblyLoading(false);
@@ -165,6 +221,32 @@ export const ProjectDetail: React.FC = () => {
     }));
     setWorkflowConfig(item.workflow.length > 0 ? [...item.workflow] : initialFlow);
     setIsFlowModalOpen(item.id);
+  };
+
+  const handleAddBomItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      // Set the item ID to the currently selected item if we're adding from the modal
+      const bomItemData = {
+        item_id: newBomItem.itemId,
+        material_id: newBomItem.materialId,
+        quantity_per_unit: newBomItem.quantityPerUnit,
+        total_required: newBomItem.totalRequired,
+        allocated: newBomItem.allocated,
+        realized: newBomItem.realized
+      };
+
+      await addBomItem(bomItemData);
+      setIsBomModalOpen(false);
+      setNewBomItem({ itemId: '', materialId: '', quantityPerUnit: 1, totalRequired: 0, allocated: 0, realized: 0 });
+
+      // Reload BOM items after adding
+      if (id) {
+        await loadBomItems(id);
+      }
+    } catch (error) {
+      alert('Gagal menambahkan BOM item. Silakan coba lagi.');
+    }
   };
 
   return (
@@ -247,6 +329,15 @@ export const ProjectDetail: React.FC = () => {
                   <button onClick={async () => {
                     if (window.confirm('Yakin ingin menghapus item ini?')) {
                       try {
+                        // First delete all BOM items associated with this project item
+                        for (const bomItem of item.bom) {
+                          await deleteBomItem(bomItem.id);
+                        }
+                        // Reload BOM items after deletion
+                        if (id) {
+                          await loadBomItems(id);
+                        }
+                        // Then delete the project item
                         await deleteProjectItem(item.id);
                       } catch (error) {
                         alert('Gagal menghapus item kerja. Silakan coba lagi.');
@@ -259,7 +350,9 @@ export const ProjectDetail: React.FC = () => {
               {/* 1. MONITORING RAKITAN */}
               {item.flowType === 'NEW' && (
                 <div className="p-10 pt-0 space-y-8">
-                   <h4 className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-3"><Component size={14}/> MONITORING RAKITAN (BAHAN MENTAH)</h4>
+                   <div className="flex justify-between items-center">
+                     <h4 className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-3"><Component size={14}/> MONITORING RAKITAN (BAHAN MENTAH)</h4>
+                   </div>
                    <div className="border rounded-[40px] overflow-hidden bg-white shadow-sm overflow-x-auto custom-scrollbar">
                      <table className="w-full text-left text-xs min-w-[1000px]">
                        <thead className="bg-slate-50 text-slate-400 font-black uppercase tracking-widest border-b">
@@ -267,40 +360,94 @@ export const ProjectDetail: React.FC = () => {
                            <th className="px-8 py-5">Komponen</th>
                            <th className="px-8 py-5 text-center">Qty/Unit</th>
                            <th className="px-8 py-5 text-center">Total Perlu</th>
+                           <th className="px-8 py-5 text-center">Alokasi</th>
+                           <th className="px-8 py-5 text-center">Realisasi</th>
                            {RAW_STEPS.map(s => <th key={s} className="px-8 py-5 text-center">{s} <br/><span className="text-[8px] opacity-60">(Hasil / Sedia)</span></th>)}
                            <th className="px-8 py-5 text-center bg-emerald-50/50">Stok Jadi <br/><span className="text-[8px] opacity-60">(Siap Las)</span></th>
                            <th className="px-8 py-5 text-right">Aksi</th>
                          </tr>
                        </thead>
                        <tbody className="divide-y font-bold">
-                         {item.subAssemblies.map(sa => (
-                           <tr key={sa.id} className="hover:bg-slate-50/50 transition-colors">
-                             <td className="px-8 py-6 uppercase font-black text-slate-900">{sa.name}</td>
-                             <td className="px-8 py-6 text-center text-slate-400">{sa.qtyPerParent}</td>
-                             <td className="px-8 py-6 text-center text-slate-900 font-black">{sa.totalNeeded}</td>
-                             {RAW_STEPS.map((s) => {
-                               const isIncluded = sa.processes.includes(s);
-                               const stats = sa.stepStats[s] || { produced: 0, available: 0 };
-                               const perc = sa.totalNeeded > 0 ? Math.round((stats.produced / sa.totalNeeded) * 100) : 0;
-                               return (
+                         {item.subAssemblies.map(sa => {
+                           const correspondingBomItem = item.bom.find(bomItem => bomItem.materialId === sa.materialId);
+                           return (
+                             <tr key={sa.id} className="hover:bg-slate-50/50 transition-colors">
+                               <td className="px-8 py-6 uppercase font-black text-slate-900">{sa.name} {correspondingBomItem && <span className="text-[8px] font-black text-amber-600 ml-2">(Generated)</span>}</td>
+                               <td className="px-8 py-6 text-center text-slate-400">{sa.qtyPerParent}</td>
+                               <td className="px-8 py-6 text-center text-slate-900 font-black">{sa.totalNeeded}</td>
+                               <td className="px-8 py-6 text-center text-slate-900 font-black">
+                                 {correspondingBomItem ? correspondingBomItem.allocated : 0}
+                               </td>
+                               <td className="px-8 py-6 text-center text-slate-900 font-black">
+                                 {correspondingBomItem ? correspondingBomItem.realized : 0}
+                               </td>
+                               {RAW_STEPS.map((s) => {
+                                 const isIncluded = Array.isArray(sa.processes) ? sa.processes.some(p => (typeof p === 'string' ? p : p.name || p.step || String(p)) === s) : false;
+                                 const stats = sa.stepStats[s] || { produced: 0, available: 0 };
+                                 const perc = sa.totalNeeded > 0 ? Math.round((stats.produced / sa.totalNeeded) * 100) : 0;
+                                 return (
+                                   <td key={s} className="px-8 py-6 text-center">
+                                     {isIncluded ? (
+                                       <div className="flex flex-col items-center">
+                                         <span className={`px-3 py-1 rounded-xl font-black text-[11px] bg-slate-100 text-slate-800 shadow-sm`}>{stats.produced} <span className="text-[8px] opacity-40 ml-1">{perc}%</span></span>
+                                         <span className={`text-[10px] font-black mt-1 ${stats.available > 0 ? 'text-blue-600' : 'text-slate-300'}`}>Sedia: {stats.available}</span>
+                                       </div>
+                                     ) : '-'}
+                                   </td>
+                                 );
+                               })}
+                               <td className="px-8 py-6 text-center text-emerald-600 font-black text-lg bg-emerald-50/20">{sa.completedQty}</td>
+                               <td className="px-8 py-6 text-right">
+                                  <button onClick={() => setLogDetailSa({id: sa.id, name: sa.name})} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all">
+                                     <ClipboardList size={18}/>
+                                  </button>
+                               </td>
+                             </tr>
+                           );
+                         })}
+                         {/* Display BOM items that are not associated with any sub-assembly (direct BOM items) */}
+                         {item.bom.filter(bomItem => !item.subAssemblies.some(sa => sa.materialId === bomItem.materialId)).map(bomItem => {
+                           const material = materials.find(m => m.id === bomItem.materialId);
+                           return (
+                             <tr key={bomItem.id} className="hover:bg-slate-50/50 transition-colors">
+                               <td className="px-8 py-6 uppercase font-black text-slate-900">{material?.name || 'BOM Item'} <span className="text-[8px] font-black text-blue-600 ml-2">(Direct)</span></td>
+                               <td className="px-8 py-6 text-center text-slate-400">{bomItem.quantityPerUnit}</td>
+                               <td className="px-8 py-6 text-center text-slate-900 font-black">{bomItem.totalRequired}</td>
+                               <td className="px-8 py-6 text-center text-slate-900 font-black">{bomItem.allocated}</td>
+                               <td className="px-8 py-6 text-center text-slate-900 font-black">{bomItem.realized}</td>
+                               {RAW_STEPS.map((s, idx) => (
                                  <td key={s} className="px-8 py-6 text-center">
-                                   {isIncluded ? (
+                                   {idx === 0 ? (
                                      <div className="flex flex-col items-center">
-                                       <span className={`px-3 py-1 rounded-xl font-black text-[11px] bg-slate-100 text-slate-800 shadow-sm`}>{stats.produced} <span className="text-[8px] opacity-40 ml-1">{perc}%</span></span>
-                                       <span className={`text-[10px] font-black mt-1 ${stats.available > 0 ? 'text-blue-600' : 'text-slate-300'}`}>Sedia: {stats.available}</span>
+                                       <span className="px-3 py-1 rounded-xl font-black text-[11px] bg-blue-100 text-blue-600 shadow-sm">Direct</span>
                                      </div>
                                    ) : '-'}
                                  </td>
-                               );
-                             })}
-                             <td className="px-8 py-6 text-center text-emerald-600 font-black text-lg bg-emerald-50/20">{sa.completedQty}</td>
-                             <td className="px-8 py-6 text-right">
-                                <button onClick={() => setLogDetailSa({id: sa.id, name: sa.name})} className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-2xl transition-all">
-                                   <ClipboardList size={18}/>
-                                </button>
-                             </td>
-                           </tr>
-                         ))}
+                               ))}
+                               <td className="px-8 py-6 text-center text-emerald-600 font-black text-lg bg-emerald-50/20">{bomItem.realized}</td>
+                               <td className="px-8 py-6 text-right">
+                                 <button
+                                   onClick={async () => {
+                                     if (window.confirm('Yakin ingin menghapus BOM item ini?')) {
+                                       try {
+                                         await deleteBomItem(bomItem.id);
+                                         // Reload BOM items after deletion
+                                         if (id) {
+                                           await loadBomItems(id);
+                                         }
+                                       } catch (error) {
+                                         alert('Gagal menghapus BOM item. Silakan coba lagi.');
+                                       }
+                                     }
+                                   }}
+                                   className="p-2 text-slate-400 hover:text-red-500 rounded-2xl transition-all"
+                                 >
+                                   <Trash2 size={16}/>
+                                 </button>
+                               </td>
+                             </tr>
+                           );
+                         })}
                        </tbody>
                      </table>
                    </div>
@@ -438,9 +585,9 @@ export const ProjectDetail: React.FC = () => {
                        <label className="text-[10px] font-black text-slate-400 uppercase ml-4">ALUR PROSES RAKITAN</label>
                        <div className="flex flex-wrap gap-4 p-6 bg-white rounded-[32px] border border-slate-200">
                           {RAW_STEPS.map((s, idx) => {
-                            const isAdded = newSub.processes.includes(s);
+                            const isAdded = Array.isArray(newSub.processes) ? newSub.processes.includes(s) : false;
                             return (
-                              <button key={s} onClick={() => setNewSub(p => ({...p, processes: isAdded ? p.processes.filter(x => x !== s) : [...p.processes, s]}))} className={`px-8 py-4 rounded-[20px] border-2 font-black text-xs uppercase transition-all flex items-center gap-3 ${isAdded ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-blue-300'}`}>
+                              <button key={s} onClick={() => setNewSub(p => ({...p, processes: isAdded ? (Array.isArray(p.processes) ? p.processes.filter(x => x !== s) : []) : (Array.isArray(p.processes) ? [...p.processes, s] : [s])}))} className={`px-8 py-4 rounded-[20px] border-2 font-black text-xs uppercase transition-all flex items-center gap-3 ${isAdded ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-blue-300'}`}>
                                 <span className="opacity-50">{idx + 1}.</span> {s}
                               </button>
                             );
@@ -458,7 +605,7 @@ export const ProjectDetail: React.FC = () => {
                                <p className="font-black text-slate-900 uppercase text-lg">{sa.name}</p>
                                <div className="flex items-center gap-4">
                                   <span className="text-[9px] font-bold text-slate-400 uppercase px-2 py-0.5 bg-slate-50 rounded-lg">{sa.qtyPerParent} PCS / UNIT</span>
-                                  <div className="flex gap-1">{sa.processes.map((p, i) => (<span key={i} className="text-[8px] font-black text-blue-600 uppercase border border-blue-100 px-2 py-0.5 rounded-lg">{p}</span>))}</div>
+                                  <div className="flex gap-1">{sa.processes.map((p, i) => (<span key={i} className="text-[8px] font-black text-blue-600 uppercase border border-blue-100 px-2 py-0.5 rounded-lg">{typeof p === 'string' ? p : p.name || p.step || String(p)}</span>))}</div>
                                </div>
                             </div>
                             <div className="flex gap-2">
@@ -476,6 +623,19 @@ export const ProjectDetail: React.FC = () => {
                                  if (window.confirm('Yakin ingin menghapus sub assembly ini?')) {
                                    setSubAssemblyActionsLoading(prev => ({...prev, [sa.id]: true}));
                                    try {
+                                     // First, find and delete the corresponding BOM item
+                                     const item = items.find(i => i.id === isSubModalOpen);
+                                     if (item) {
+                                       const bomItem = item.bom.find(b => b.materialId === sa.materialId);
+                                       if (bomItem) {
+                                         await deleteBomItem(bomItem.id);
+                                         // Reload BOM items after deletion
+                                         if (id) {
+                                           await loadBomItems(id);
+                                         }
+                                       }
+                                     }
+                                     // Then delete the sub assembly
                                      await deleteSubAssembly(isSubModalOpen!, sa.id);
                                    } catch (error) {
                                      alert('Gagal menghapus sub assembly. Silakan coba lagi.');

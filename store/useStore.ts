@@ -17,7 +17,11 @@ import {
   getProjectItemsAPI,
   createProjectItemAPI,
   updateProjectItemAPI,
-  deleteProjectItemAPI
+  deleteProjectItemAPI,
+  getBomItemsAPI,
+  createBomItemAPI,
+  updateBomItemAPI,
+  deleteBomItemAPI
 } from '../lib/api';
 
 // Import supplier API functions
@@ -90,6 +94,12 @@ interface AppState {
   setTaskStatus: (taskId: string, status: TaskStatus) => void;
   startDowntime: (taskId: string) => void;
   endDowntime: (taskId: string) => void;
+
+  // BOM Item functions
+  loadBomItems: (projectId?: string) => Promise<void>;
+  addBomItem: (bomItem: any) => Promise<void>;
+  updateBomItem: (id: string, bomItemData: Partial<any>) => Promise<void>;
+  deleteBomItem: (id: string) => Promise<void>;
 
   addProject: (p: Project) => void;
   updateProject: (p: Project) => void;
@@ -1902,6 +1912,74 @@ export const useStore = create<AppState>((set, get) => ({
       await deleteReceivingItemAPI(id, token);
     } catch (error) {
       console.error('Failed to delete receiving item via API:', error);
+      throw error;
+    }
+  },
+
+  // BOM Item functions
+  loadBomItems: async (projectId?) => {
+    const token = get().token;
+    if (!token) {
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      const bomItems = await getBomItemsAPI(token, projectId);
+      // We don't store BOM items separately in the state since they're part of project items
+      // This function is just a wrapper for the API call
+    } catch (error) {
+      console.error('Failed to load BOM items from API:', error);
+      throw error;
+    }
+  },
+  addBomItem: async (bomItem) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Create the BOM item via API
+      const createdBomItem = await createBomItemAPI(bomItem, token);
+      return createdBomItem;
+    } catch (error) {
+      console.error('Failed to create BOM item via API:', error);
+      throw error;
+    }
+  },
+  updateBomItem: async (id, bomItemData) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Update the BOM item via API
+      const updatedBomItem = await updateBomItemAPI(id, bomItemData, token);
+      return updatedBomItem;
+    } catch (error) {
+      console.error('Failed to update BOM item via API:', error);
+      throw error;
+    }
+  },
+  deleteBomItem: async (id) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      console.error('No token available for API call');
+      return;
+    }
+
+    try {
+      // Delete the BOM item via API
+      await deleteBomItemAPI(id, token);
+    } catch (error) {
+      console.error('Failed to delete BOM item via API:', error);
       throw error;
     }
   }
