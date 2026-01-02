@@ -12,6 +12,12 @@ interface ErrorResponse {
   };
 }
 
+// Get base URL from environment variables, with fallback to localhost
+const getBaseUrl = (): string => {
+  // Vite uses VITE_ prefix for environment variables
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+};
+
 /**
  * Convert API response field names to frontend field names
  */
@@ -68,7 +74,7 @@ const convertFrontendUserToApi = (frontendUser: Partial<User>, isCreate: boolean
  * Get all users API call
  */
 export const getUsersAPI = async (token: string): Promise<User[]> => {
-  const response = await fetch('http://localhost:8000/api/users', {
+  const response = await fetch(`${getBaseUrl()}/api/users`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -91,7 +97,7 @@ export const getUsersAPI = async (token: string): Promise<User[]> => {
  * Get single user API call
  */
 export const getUserAPI = async (id: string | number, token: string): Promise<User> => {
-  const response = await fetch(`http://localhost:8000/api/users/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/users/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -129,7 +135,7 @@ export const createUserAPI = async (userData: CreateUserData, token: string): Pr
 
   const apiUserData = convertFrontendUserToApi(userDataWithValidRole, true);
 
-  const response = await fetch('http://localhost:8000/api/users', {
+  const response = await fetch(`${getBaseUrl()}/api/users`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -160,7 +166,7 @@ export const createUserAPI = async (userData: CreateUserData, token: string): Pr
 export const updateUserAPI = async (id: string | number, userData: Partial<User>, token: string): Promise<User> => {
   const apiUserData = convertFrontendUserToApi(userData);
 
-  const response = await fetch(`http://localhost:8000/api/users/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/users/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -189,7 +195,7 @@ export const updateUserAPI = async (id: string | number, userData: Partial<User>
  * Delete user API call
  */
 export const deleteUserAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/users/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/users/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -213,7 +219,7 @@ export const deleteUserAPI = async (id: string | number, token: string): Promise
  * Login API call
  */
 export const loginAPI = async (email: string, password: string): Promise<LoginResponse> => {
-  const response = await fetch('http://localhost:8000/api/login', {
+  const response = await fetch(`${getBaseUrl()}/api/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -243,7 +249,7 @@ export const loginAPI = async (email: string, password: string): Promise<LoginRe
  * Get user profile API call
  */
 export const getProfileAPI = async (token: string): Promise<User> => {
-  const response = await fetch('http://localhost:8000/api/me', {
+  const response = await fetch(`${getBaseUrl()}/api/me`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -263,7 +269,7 @@ export const getProfileAPI = async (token: string): Promise<User> => {
  * Logout API call
  */
 export const logoutAPI = async (token: string): Promise<void> => {
-  const response = await fetch('http://localhost:8000/api/logout', {
+  const response = await fetch(`${getBaseUrl()}/api/logout`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -305,7 +311,7 @@ const convertApiProjectToFrontend = (apiProject: any): Project => {
  */
 export const getProjectsAPI = async (token: string): Promise<Project[]> => {
   try {
-    const response = await fetch('http://localhost:8000/api/projects', {
+    const response = await fetch(`${getBaseUrl()}/api/projects`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -322,7 +328,7 @@ export const getProjectsAPI = async (token: string): Promise<Project[]> => {
     return apiProjects.map(convertApiProjectToFrontend);
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error('Cannot connect to backend. Is the API server running at http://localhost:8000?');
+      throw new Error(`Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`);
     }
     throw error;
   }
@@ -332,7 +338,7 @@ export const getProjectsAPI = async (token: string): Promise<Project[]> => {
  * Get single project API call
  */
 export const getProjectAPI = async (id: string | number, token: string): Promise<Project> => {
-  const response = await fetch(`http://localhost:8000/api/projects/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/projects/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -383,7 +389,7 @@ export const createProjectAPI = async (projectData: CreateProjectData, token: st
     is_locked: projectData.isLocked || false,
   };
 
-  const response = await fetch('http://localhost:8000/api/projects', {
+  const response = await fetch(`${getBaseUrl()}/api/projects`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -428,7 +434,7 @@ export const updateProjectAPI = async (id: string | number, projectData: Partial
     ...(projectData.isLocked !== undefined && { is_locked: projectData.isLocked }),
   };
 
-  const response = await fetch(`http://localhost:8000/api/projects/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/projects/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -457,7 +463,7 @@ export const updateProjectAPI = async (id: string | number, projectData: Partial
  * Delete project API call
  */
 export const deleteProjectAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/projects/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/projects/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -519,7 +525,7 @@ const convertFrontendMaterialToApi = (frontendMaterial: Partial<Material>, isCre
  * Get all materials API call
  */
 export const getMaterialsAPI = async (token: string): Promise<Material[]> => {
-  const response = await fetch('http://localhost:8000/api/materials', {
+  const response = await fetch(`${getBaseUrl()}/api/materials`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -542,7 +548,7 @@ export const getMaterialsAPI = async (token: string): Promise<Material[]> => {
  * Get single material API call
  */
 export const getMaterialAPI = async (id: string | number, token: string): Promise<Material> => {
-  const response = await fetch(`http://localhost:8000/api/materials/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/materials/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -573,7 +579,7 @@ export interface CreateMaterialData {
 }
 
 export const createMaterialAPI = async (materialData: CreateMaterialData, token: string): Promise<Material> => {
-  const response = await fetch('http://localhost:8000/api/materials', {
+  const response = await fetch(`${getBaseUrl()}/api/materials`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -612,7 +618,7 @@ export const updateMaterialAPI = async (id: string | number, materialData: Parti
     category: materialData.category,
   };
 
-  const response = await fetch(`http://localhost:8000/api/materials/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/materials/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -641,7 +647,7 @@ export const updateMaterialAPI = async (id: string | number, materialData: Parti
  * Delete material API call
  */
 export const deleteMaterialAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/materials/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/materials/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -708,7 +714,7 @@ const convertFrontendRfqToApi = (frontendRfq: Partial<RFQ>, isCreate: boolean = 
  * Get all RFQs API call
  */
 export const getRfqsAPI = async (token: string): Promise<RFQ[]> => {
-  const response = await fetch('http://localhost:8000/api/rfqs', {
+  const response = await fetch(`${getBaseUrl()}/api/rfqs`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -731,7 +737,7 @@ export const getRfqsAPI = async (token: string): Promise<RFQ[]> => {
  * Get single RFQ API call
  */
 export const getRfqAPI = async (id: string | number, token: string): Promise<RFQ> => {
-  const response = await fetch(`http://localhost:8000/api/rfqs/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/rfqs/${id}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -765,7 +771,7 @@ export interface CreateRfqData {
 }
 
 export const createRfqAPI = async (rfqData: CreateRfqData, token: string): Promise<RFQ> => {
-  const response = await fetch('http://localhost:8000/api/rfqs', {
+  const response = await fetch(`${getBaseUrl()}/api/rfqs`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -811,7 +817,7 @@ export const updateRfqAPI = async (id: string | number, rfqData: Partial<RFQ>, t
     }));
   }
 
-  const response = await fetch(`http://localhost:8000/api/rfqs/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/rfqs/${id}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -842,7 +848,7 @@ export const updateRfqAPI = async (id: string | number, rfqData: Partial<RFQ>, t
  * Delete RFQ API call
  */
 export const deleteRfqAPI = async (id: string | number, token: string): Promise<void> => {
-  const response = await fetch(`http://localhost:8000/api/rfqs/${id}`, {
+  const response = await fetch(`${getBaseUrl()}/api/rfqs/${id}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
