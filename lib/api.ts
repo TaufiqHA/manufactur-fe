@@ -1,4 +1,12 @@
-import { User, Project, Material, RFQ, Supplier } from '../types';
+import {
+  User,
+  Project,
+  Material,
+  RFQ,
+  Supplier,
+  SubAssembly,
+  ProcessStep,
+} from "../types";
 
 interface LoginResponse {
   user: User;
@@ -15,7 +23,7 @@ interface ErrorResponse {
 // Get base URL from environment variables, with fallback to localhost
 const getBaseUrl = (): string => {
   // Vite uses VITE_ prefix for environment variables
-  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  return (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8000";
 };
 
 /**
@@ -25,7 +33,7 @@ const convertApiUserToFrontend = (apiUser: any): User => {
   let permissions: any = {};
 
   // Handle permissions - it might be a JSON string or already an object
-  if (typeof apiUser.permissions === 'string') {
+  if (typeof apiUser.permissions === "string") {
     try {
       permissions = JSON.parse(apiUser.permissions);
     } catch (e) {
@@ -43,7 +51,7 @@ const convertApiUserToFrontend = (apiUser: any): User => {
     email_verified_at: apiUser.email_verified_at,
     created_at: apiUser.created_at,
     updated_at: apiUser.updated_at,
-    role: apiUser.role || 'OPERATOR', // Default role if not provided
+    role: apiUser.role || "OPERATOR", // Default role if not provided
     permissions: permissions,
   };
 };
@@ -51,7 +59,10 @@ const convertApiUserToFrontend = (apiUser: any): User => {
 /**
  * Convert frontend field names to API request field names
  */
-const convertFrontendUserToApi = (frontendUser: Partial<User>, isCreate: boolean = false): any => {
+const convertFrontendUserToApi = (
+  frontendUser: Partial<User>,
+  isCreate: boolean = false
+): any => {
   const apiUser: any = {
     name: frontendUser.name,
     email: frontendUser.email || frontendUser.username, // Use email if available, otherwise username
@@ -62,7 +73,7 @@ const convertFrontendUserToApi = (frontendUser: Partial<User>, isCreate: boolean
     apiUser.password_confirmation = (frontendUser as any).password;
   }
 
-  if ('password' in frontendUser && (frontendUser as any).password) {
+  if ("password" in frontendUser && (frontendUser as any).password) {
     apiUser.password = (frontendUser as any).password;
     apiUser.password_confirmation = (frontendUser as any).password;
   }
@@ -75,39 +86,44 @@ const convertFrontendUserToApi = (frontendUser: Partial<User>, isCreate: boolean
  */
 export const getUsersAPI = async (token: string): Promise<User[]> => {
   const response = await fetch(`${getBaseUrl()}/api/users`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch users');
+    throw new Error(errorData.message || "Failed to fetch users");
   }
 
   const apiResponse = await response.json();
   // Handle paginated response - users are in the nested 'data.data' property
-  const usersData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || []);
+  const usersData = Array.isArray(apiResponse)
+    ? apiResponse
+    : apiResponse.data?.data || [];
   return usersData.map(convertApiUserToFrontend);
 };
 
 /**
  * Get single user API call
  */
-export const getUserAPI = async (id: string | number, token: string): Promise<User> => {
+export const getUserAPI = async (
+  id: string | number,
+  token: string
+): Promise<User> => {
   const response = await fetch(`${getBaseUrl()}/api/users/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch user');
+    throw new Error(errorData.message || "Failed to fetch user");
   }
 
   const apiUser = await response.json();
@@ -126,20 +142,23 @@ export interface CreateUserData {
   permissions?: any;
 }
 
-export const createUserAPI = async (userData: CreateUserData, token: string): Promise<User> => {
+export const createUserAPI = async (
+  userData: CreateUserData,
+  token: string
+): Promise<User> => {
   // Create a copy of userData with proper role typing
   const userDataWithValidRole = {
     ...userData,
-    role: userData.role as 'ADMIN' | 'OPERATOR' | 'MANAGER' || 'OPERATOR'
+    role: (userData.role as "ADMIN" | "OPERATOR" | "MANAGER") || "OPERATOR",
   };
 
   const apiUserData = convertFrontendUserToApi(userDataWithValidRole, true);
 
   const response = await fetch(`${getBaseUrl()}/api/users`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiUserData),
   });
@@ -149,10 +168,14 @@ export const createUserAPI = async (userData: CreateUserData, token: string): Pr
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create user');
+      throw new Error(errorData.message || "Failed to create user");
     }
   }
 
@@ -163,14 +186,18 @@ export const createUserAPI = async (userData: CreateUserData, token: string): Pr
 /**
  * Update user API call
  */
-export const updateUserAPI = async (id: string | number, userData: Partial<User>, token: string): Promise<User> => {
+export const updateUserAPI = async (
+  id: string | number,
+  userData: Partial<User>,
+  token: string
+): Promise<User> => {
   const apiUserData = convertFrontendUserToApi(userData);
 
   const response = await fetch(`${getBaseUrl()}/api/users/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiUserData),
   });
@@ -180,10 +207,14 @@ export const updateUserAPI = async (id: string | number, userData: Partial<User>
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update user');
+      throw new Error(errorData.message || "Failed to update user");
     }
   }
 
@@ -194,35 +225,41 @@ export const updateUserAPI = async (id: string | number, userData: Partial<User>
 /**
  * Delete user API call
  */
-export const deleteUserAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteUserAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/users/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete user');
+    throw new Error(errorData.message || "Failed to delete user");
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete user');
+    throw new Error(errorData.message || "Failed to delete user");
   }
 };
 
 /**
  * Login API call
  */
-export const loginAPI = async (email: string, password: string): Promise<LoginResponse> => {
+export const loginAPI = async (
+  email: string,
+  password: string
+): Promise<LoginResponse> => {
   const response = await fetch(`${getBaseUrl()}/api/login`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({ email, password }),
   });
@@ -232,13 +269,17 @@ export const loginAPI = async (email: string, password: string): Promise<LoginRe
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 401) {
       // Unauthorized
-      throw new Error(errorData.message || 'Invalid credentials');
+      throw new Error(errorData.message || "Invalid credentials");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Server error occurred');
+      throw new Error(errorData.message || "Server error occurred");
     }
   }
 
@@ -250,16 +291,16 @@ export const loginAPI = async (email: string, password: string): Promise<LoginRe
  */
 export const getProfileAPI = async (token: string): Promise<User> => {
   const response = await fetch(`${getBaseUrl()}/api/me`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch user profile');
+    throw new Error(errorData.message || "Failed to fetch user profile");
   }
 
   return response.json();
@@ -270,16 +311,16 @@ export const getProfileAPI = async (token: string): Promise<User> => {
  */
 export const logoutAPI = async (token: string): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/logout`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to logout');
+    throw new Error(errorData.message || "Failed to logout");
   }
 
   return response.json();
@@ -312,23 +353,27 @@ const convertApiProjectToFrontend = (apiProject: any): Project => {
 export const getProjectsAPI = async (token: string): Promise<Project[]> => {
   try {
     const response = await fetch(`${getBaseUrl()}/api/projects`, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       const errorData: ErrorResponse = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Failed to fetch projects (${response.status})`);
+      throw new Error(
+        errorData.message || `Failed to fetch projects (${response.status})`
+      );
     }
 
     const apiProjects = await response.json();
     return apiProjects.map(convertApiProjectToFrontend);
   } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error(`Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`);
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      throw new Error(
+        `Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`
+      );
     }
     throw error;
   }
@@ -337,18 +382,21 @@ export const getProjectsAPI = async (token: string): Promise<Project[]> => {
 /**
  * Get single project API call
  */
-export const getProjectAPI = async (id: string | number, token: string): Promise<Project> => {
+export const getProjectAPI = async (
+  id: string | number,
+  token: string
+): Promise<Project> => {
   const response = await fetch(`${getBaseUrl()}/api/projects/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch project');
+    throw new Error(errorData.message || "Failed to fetch project");
   }
 
   const apiProject = await response.json();
@@ -372,15 +420,20 @@ export interface CreateProjectData {
   isLocked?: boolean;
 }
 
-export const createProjectAPI = async (projectData: CreateProjectData, token: string): Promise<Project> => {
+export const createProjectAPI = async (
+  projectData: CreateProjectData,
+  token: string
+): Promise<Project> => {
   // Map frontend field names to backend field names
   const backendData = {
     name: projectData.name,
-    code: `PRJ-${new Date().getFullYear()}-${Math.floor(Math.random() * 900) + 100}`, // Generate code on frontend
+    code: `PRJ-${new Date().getFullYear()}-${
+      Math.floor(Math.random() * 900) + 100
+    }`, // Generate code on frontend
     customer: projectData.customer,
-    start_date: projectData.startDate || new Date().toISOString().split('T')[0],
+    start_date: projectData.startDate || new Date().toISOString().split("T")[0],
     deadline: projectData.deadline,
-    status: projectData.status || 'PLANNED',
+    status: projectData.status || "PLANNED",
     progress: projectData.progress || 0,
     qty_per_unit: projectData.qtyPerUnit,
     procurement_qty: projectData.procurementQty,
@@ -390,10 +443,10 @@ export const createProjectAPI = async (projectData: CreateProjectData, token: st
   };
 
   const response = await fetch(`${getBaseUrl()}/api/projects`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(backendData),
   });
@@ -403,10 +456,14 @@ export const createProjectAPI = async (projectData: CreateProjectData, token: st
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create project');
+      throw new Error(errorData.message || "Failed to create project");
     }
   }
 
@@ -417,28 +474,48 @@ export const createProjectAPI = async (projectData: CreateProjectData, token: st
 /**
  * Update project API call
  */
-export const updateProjectAPI = async (id: string | number, projectData: Partial<Project>, token: string): Promise<Project> => {
+export const updateProjectAPI = async (
+  id: string | number,
+  projectData: Partial<Project>,
+  token: string
+): Promise<Project> => {
   // Map frontend field names to backend field names
   const backendData = {
     ...(projectData.name !== undefined && { name: projectData.name }),
     ...(projectData.code !== undefined && { code: projectData.code }),
-    ...(projectData.customer !== undefined && { customer: projectData.customer }),
-    ...(projectData.startDate !== undefined && { start_date: projectData.startDate }),
-    ...(projectData.deadline !== undefined && { deadline: projectData.deadline }),
+    ...(projectData.customer !== undefined && {
+      customer: projectData.customer,
+    }),
+    ...(projectData.startDate !== undefined && {
+      start_date: projectData.startDate,
+    }),
+    ...(projectData.deadline !== undefined && {
+      deadline: projectData.deadline,
+    }),
     ...(projectData.status !== undefined && { status: projectData.status }),
-    ...(projectData.progress !== undefined && { progress: projectData.progress }),
-    ...(projectData.qtyPerUnit !== undefined && { qty_per_unit: projectData.qtyPerUnit }),
-    ...(projectData.procurementQty !== undefined && { procurement_qty: projectData.procurementQty }),
-    ...(projectData.totalQty !== undefined && { total_qty: projectData.totalQty }),
+    ...(projectData.progress !== undefined && {
+      progress: projectData.progress,
+    }),
+    ...(projectData.qtyPerUnit !== undefined && {
+      qty_per_unit: projectData.qtyPerUnit,
+    }),
+    ...(projectData.procurementQty !== undefined && {
+      procurement_qty: projectData.procurementQty,
+    }),
+    ...(projectData.totalQty !== undefined && {
+      total_qty: projectData.totalQty,
+    }),
     ...(projectData.unit !== undefined && { unit: projectData.unit }),
-    ...(projectData.isLocked !== undefined && { is_locked: projectData.isLocked }),
+    ...(projectData.isLocked !== undefined && {
+      is_locked: projectData.isLocked,
+    }),
   };
 
   const response = await fetch(`${getBaseUrl()}/api/projects/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(backendData),
   });
@@ -448,10 +525,14 @@ export const updateProjectAPI = async (id: string | number, projectData: Partial
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update project');
+      throw new Error(errorData.message || "Failed to update project");
     }
   }
 
@@ -462,24 +543,27 @@ export const updateProjectAPI = async (id: string | number, projectData: Partial
 /**
  * Delete project API call
  */
-export const deleteProjectAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteProjectAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/projects/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete project');
+    throw new Error(errorData.message || "Failed to delete project");
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete project');
+    throw new Error(errorData.message || "Failed to delete project");
   }
 };
 
@@ -494,7 +578,9 @@ const convertApiMaterialToFrontend = (apiMaterial: any): Material => {
     unit: apiMaterial.unit,
     currentStock: apiMaterial.current_stock || apiMaterial.currentStock || 0,
     safetyStock: apiMaterial.safety_stock || apiMaterial.safetyStock || 0,
-    pricePerUnit: parseFloat(apiMaterial.price_per_unit || apiMaterial.pricePerUnit || 0),
+    pricePerUnit: parseFloat(
+      apiMaterial.price_per_unit || apiMaterial.pricePerUnit || 0
+    ),
     category: apiMaterial.category,
   };
 };
@@ -502,7 +588,10 @@ const convertApiMaterialToFrontend = (apiMaterial: any): Material => {
 /**
  * Convert frontend field names to API request field names for Material
  */
-const convertFrontendMaterialToApi = (frontendMaterial: Partial<Material>, isCreate: boolean = false): any => {
+const convertFrontendMaterialToApi = (
+  frontendMaterial: Partial<Material>,
+  isCreate: boolean = false
+): any => {
   const apiMaterial: any = {
     code: frontendMaterial.code,
     name: frontendMaterial.name,
@@ -526,39 +615,44 @@ const convertFrontendMaterialToApi = (frontendMaterial: Partial<Material>, isCre
  */
 export const getMaterialsAPI = async (token: string): Promise<Material[]> => {
   const response = await fetch(`${getBaseUrl()}/api/materials`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch materials');
+    throw new Error(errorData.message || "Failed to fetch materials");
   }
 
   const apiResponse = await response.json();
   // Handle both array response and paginated response
-  const materialsData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  const materialsData = Array.isArray(apiResponse)
+    ? apiResponse
+    : apiResponse.data?.data || apiResponse.data || [];
   return materialsData.map(convertApiMaterialToFrontend);
 };
 
 /**
  * Get single material API call
  */
-export const getMaterialAPI = async (id: string | number, token: string): Promise<Material> => {
+export const getMaterialAPI = async (
+  id: string | number,
+  token: string
+): Promise<Material> => {
   const response = await fetch(`${getBaseUrl()}/api/materials/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch material');
+    throw new Error(errorData.message || "Failed to fetch material");
   }
 
   const apiMaterial = await response.json();
@@ -575,15 +669,18 @@ export interface CreateMaterialData {
   current_stock: number;
   safety_stock: number;
   price_per_unit: number;
-  category: 'RAW' | 'FINISHING' | 'HARDWARE';
+  category: "RAW" | "FINISHING" | "HARDWARE";
 }
 
-export const createMaterialAPI = async (materialData: CreateMaterialData, token: string): Promise<Material> => {
+export const createMaterialAPI = async (
+  materialData: CreateMaterialData,
+  token: string
+): Promise<Material> => {
   const response = await fetch(`${getBaseUrl()}/api/materials`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(materialData),
   });
@@ -593,10 +690,14 @@ export const createMaterialAPI = async (materialData: CreateMaterialData, token:
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create material');
+      throw new Error(errorData.message || "Failed to create material");
     }
   }
 
@@ -607,7 +708,11 @@ export const createMaterialAPI = async (materialData: CreateMaterialData, token:
 /**
  * Update material API call
  */
-export const updateMaterialAPI = async (id: string | number, materialData: Partial<Material>, token: string): Promise<Material> => {
+export const updateMaterialAPI = async (
+  id: string | number,
+  materialData: Partial<Material>,
+  token: string
+): Promise<Material> => {
   const apiMaterialData = {
     code: materialData.code,
     name: materialData.name,
@@ -619,10 +724,10 @@ export const updateMaterialAPI = async (id: string | number, materialData: Parti
   };
 
   const response = await fetch(`${getBaseUrl()}/api/materials/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiMaterialData),
   });
@@ -632,10 +737,14 @@ export const updateMaterialAPI = async (id: string | number, materialData: Parti
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update material');
+      throw new Error(errorData.message || "Failed to update material");
     }
   }
 
@@ -646,24 +755,27 @@ export const updateMaterialAPI = async (id: string | number, materialData: Parti
 /**
  * Delete material API call
  */
-export const deleteMaterialAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteMaterialAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/materials/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete material');
+    throw new Error(errorData.message || "Failed to delete material");
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete material');
+    throw new Error(errorData.message || "Failed to delete material");
   }
 };
 
@@ -676,20 +788,26 @@ const convertApiRfqToFrontend = (apiRfq: any): RFQ => {
     code: apiRfq.code,
     date: apiRfq.date,
     description: apiRfq.description,
-    items: Array.isArray(apiRfq.items) ? apiRfq.items.map((item: any) => ({
-      materialId: item.materialId?.toString() || item.material_id?.toString(),
-      name: item.name,
-      qty: item.qty || item.quantity,
-      price: item.price
-    })) : [],
-    status: apiRfq.status
+    items: Array.isArray(apiRfq.items)
+      ? apiRfq.items.map((item: any) => ({
+          materialId:
+            item.materialId?.toString() || item.material_id?.toString(),
+          name: item.name,
+          qty: item.qty || item.quantity,
+          price: item.price,
+        }))
+      : [],
+    status: apiRfq.status,
   };
 };
 
 /**
  * Convert frontend field names to API request field names for RFQ
  */
-const convertFrontendRfqToApi = (frontendRfq: Partial<RFQ>, isCreate: boolean = false): any => {
+const convertFrontendRfqToApi = (
+  frontendRfq: Partial<RFQ>,
+  isCreate: boolean = false
+): any => {
   const apiRfq: any = {
     code: frontendRfq.code,
     date: frontendRfq.date,
@@ -699,11 +817,11 @@ const convertFrontendRfqToApi = (frontendRfq: Partial<RFQ>, isCreate: boolean = 
 
   // Only include items if they exist
   if (frontendRfq.items && Array.isArray(frontendRfq.items)) {
-    apiRfq.items = frontendRfq.items.map(item => ({
+    apiRfq.items = frontendRfq.items.map((item) => ({
       material_id: item.materialId,
       name: item.name,
       qty: item.qty,
-      price: item.price
+      price: item.price,
     }));
   }
 
@@ -715,33 +833,38 @@ const convertFrontendRfqToApi = (frontendRfq: Partial<RFQ>, isCreate: boolean = 
  */
 export const getRfqsAPI = async (token: string): Promise<RFQ[]> => {
   const response = await fetch(`${getBaseUrl()}/api/rfqs`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch RFQs');
+    throw new Error(errorData.message || "Failed to fetch RFQs");
   }
 
   const apiResponse = await response.json();
   // Handle both array response and paginated response
-  const rfqsData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  const rfqsData = Array.isArray(apiResponse)
+    ? apiResponse
+    : apiResponse.data?.data || apiResponse.data || [];
   return rfqsData.map(convertApiRfqToFrontend);
 };
 
 /**
  * Get single RFQ API call
  */
-export const getRfqAPI = async (id: string | number, token: string): Promise<RFQ> => {
+export const getRfqAPI = async (
+  id: string | number,
+  token: string
+): Promise<RFQ> => {
   const response = await fetch(`${getBaseUrl()}/api/rfqs/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -761,7 +884,7 @@ export interface CreateRfqData {
   code: string;
   date: string;
   description: string;
-  status: 'DRAFT' | 'PO_CREATED';
+  status: "DRAFT" | "PO_CREATED";
   items: {
     material_id: string;
     name: string;
@@ -770,12 +893,15 @@ export interface CreateRfqData {
   }[];
 }
 
-export const createRfqAPI = async (rfqData: CreateRfqData, token: string): Promise<RFQ> => {
+export const createRfqAPI = async (
+  rfqData: CreateRfqData,
+  token: string
+): Promise<RFQ> => {
   const response = await fetch(`${getBaseUrl()}/api/rfqs`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(rfqData),
   });
@@ -785,10 +911,14 @@ export const createRfqAPI = async (rfqData: CreateRfqData, token: string): Promi
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create RFQ');
+      throw new Error(errorData.message || "Failed to create RFQ");
     }
   }
 
@@ -799,7 +929,11 @@ export const createRfqAPI = async (rfqData: CreateRfqData, token: string): Promi
 /**
  * Update RFQ API call
  */
-export const updateRfqAPI = async (id: string | number, rfqData: Partial<RFQ>, token: string): Promise<RFQ> => {
+export const updateRfqAPI = async (
+  id: string | number,
+  rfqData: Partial<RFQ>,
+  token: string
+): Promise<RFQ> => {
   const apiRfqData: any = {
     code: rfqData.code,
     date: rfqData.date,
@@ -808,20 +942,24 @@ export const updateRfqAPI = async (id: string | number, rfqData: Partial<RFQ>, t
   };
 
   // Only include items if they exist
-  if ('items' in rfqData && (rfqData as any).items && Array.isArray((rfqData as any).items)) {
+  if (
+    "items" in rfqData &&
+    (rfqData as any).items &&
+    Array.isArray((rfqData as any).items)
+  ) {
     apiRfqData.items = (rfqData as any).items.map((item: any) => ({
       material_id: item.materialId,
       name: item.name,
       qty: item.qty,
-      price: item.price
+      price: item.price,
     }));
   }
 
   const response = await fetch(`${getBaseUrl()}/api/rfqs/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiRfqData),
   });
@@ -831,12 +969,16 @@ export const updateRfqAPI = async (id: string | number, rfqData: Partial<RFQ>, t
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('RFQ not found');
+      throw new Error("RFQ not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update RFQ');
+      throw new Error(errorData.message || "Failed to update RFQ");
     }
   }
 
@@ -847,12 +989,15 @@ export const updateRfqAPI = async (id: string | number, rfqData: Partial<RFQ>, t
 /**
  * Delete RFQ API call
  */
-export const deleteRfqAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteRfqAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/rfqs/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -860,16 +1005,16 @@ export const deleteRfqAPI = async (id: string | number, token: string): Promise<
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('RFQ not found');
+      throw new Error("RFQ not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete RFQ');
+      throw new Error(errorData.message || "Failed to delete RFQ");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete RFQ');
+    throw new Error(errorData.message || "Failed to delete RFQ");
   }
 };
 
@@ -888,7 +1033,9 @@ const convertApiSupplierToFrontend = (apiSupplier: any): Supplier => {
 /**
  * Convert frontend field names to API request field names for Supplier
  */
-const convertFrontendSupplierToApi = (frontendSupplier: Partial<Supplier>): any => {
+const convertFrontendSupplierToApi = (
+  frontendSupplier: Partial<Supplier>
+): any => {
   return {
     name: frontendSupplier.name,
     address: frontendSupplier.address,
@@ -901,39 +1048,46 @@ const convertFrontendSupplierToApi = (frontendSupplier: Partial<Supplier>): any 
  */
 export const getSuppliersAPI = async (token: string): Promise<Supplier[]> => {
   const response = await fetch(`${getBaseUrl()}/api/suppliers`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch suppliers');
+    throw new Error(errorData.message || "Failed to fetch suppliers");
   }
 
   const apiResponse = await response.json();
   // Handle both array response and paginated response
-  const suppliersData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  const suppliersData = Array.isArray(apiResponse)
+    ? apiResponse
+    : apiResponse.data?.data || apiResponse.data || [];
   return suppliersData.map(convertApiSupplierToFrontend);
 };
 
 /**
  * Get single supplier API call
  */
-export const getSupplierAPI = async (id: string | number, token: string): Promise<Supplier> => {
+export const getSupplierAPI = async (
+  id: string | number,
+  token: string
+): Promise<Supplier> => {
   const response = await fetch(`${getBaseUrl()}/api/suppliers/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to fetch supplier with ID: ${id}`);
+    throw new Error(
+      errorData.message || `Failed to fetch supplier with ID: ${id}`
+    );
   }
 
   const apiSupplier = await response.json();
@@ -949,12 +1103,15 @@ export interface CreateSupplierData {
   contact: string;
 }
 
-export const createSupplierAPI = async (supplierData: CreateSupplierData, token: string): Promise<Supplier> => {
+export const createSupplierAPI = async (
+  supplierData: CreateSupplierData,
+  token: string
+): Promise<Supplier> => {
   const response = await fetch(`${getBaseUrl()}/api/suppliers`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(supplierData),
   });
@@ -964,10 +1121,14 @@ export const createSupplierAPI = async (supplierData: CreateSupplierData, token:
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create supplier');
+      throw new Error(errorData.message || "Failed to create supplier");
     }
   }
 
@@ -978,7 +1139,11 @@ export const createSupplierAPI = async (supplierData: CreateSupplierData, token:
 /**
  * Update supplier API call
  */
-export const updateSupplierAPI = async (id: string | number, supplierData: Partial<Supplier>, token: string): Promise<Supplier> => {
+export const updateSupplierAPI = async (
+  id: string | number,
+  supplierData: Partial<Supplier>,
+  token: string
+): Promise<Supplier> => {
   const apiSupplierData = {
     name: supplierData.name,
     address: supplierData.address,
@@ -986,10 +1151,10 @@ export const updateSupplierAPI = async (id: string | number, supplierData: Parti
   };
 
   const response = await fetch(`${getBaseUrl()}/api/suppliers/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiSupplierData),
   });
@@ -999,12 +1164,16 @@ export const updateSupplierAPI = async (id: string | number, supplierData: Parti
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('Supplier not found');
+      throw new Error("Supplier not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update supplier');
+      throw new Error(errorData.message || "Failed to update supplier");
     }
   }
 
@@ -1015,12 +1184,15 @@ export const updateSupplierAPI = async (id: string | number, supplierData: Parti
 /**
  * Delete supplier API call
  */
-export const deleteSupplierAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteSupplierAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/suppliers/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -1028,16 +1200,16 @@ export const deleteSupplierAPI = async (id: string | number, token: string): Pro
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('Supplier not found');
+      throw new Error("Supplier not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete supplier');
+      throw new Error(errorData.message || "Failed to delete supplier");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete supplier');
+    throw new Error(errorData.message || "Failed to delete supplier");
   }
 };
 
@@ -1062,39 +1234,46 @@ const convertApiRfqItemToFrontend = (apiRfqItem: any): any => {
  */
 export const getRfqItemsAPI = async (token: string): Promise<any[]> => {
   const response = await fetch(`${getBaseUrl()}/api/rfq-items`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch RFQ items');
+    throw new Error(errorData.message || "Failed to fetch RFQ items");
   }
 
   const apiResponse = await response.json();
   // Handle both array response and paginated response
-  const rfqItemsData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  const rfqItemsData = Array.isArray(apiResponse)
+    ? apiResponse
+    : apiResponse.data?.data || apiResponse.data || [];
   return rfqItemsData.map(convertApiRfqItemToFrontend);
 };
 
 /**
  * Get single RFQ Item API call
  */
-export const getRfqItemAPI = async (id: string | number, token: string): Promise<any> => {
+export const getRfqItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/rfq-items/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to fetch RFQ item with ID: ${id}`);
+    throw new Error(
+      errorData.message || `Failed to fetch RFQ item with ID: ${id}`
+    );
   }
 
   const apiRfqItem = await response.json();
@@ -1112,12 +1291,15 @@ export interface CreateRfqItemData {
   price?: number;
 }
 
-export const createRfqItemAPI = async (rfqItemData: CreateRfqItemData, token: string): Promise<any> => {
+export const createRfqItemAPI = async (
+  rfqItemData: CreateRfqItemData,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/rfq-items`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(rfqItemData),
   });
@@ -1127,10 +1309,14 @@ export const createRfqItemAPI = async (rfqItemData: CreateRfqItemData, token: st
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create RFQ item');
+      throw new Error(errorData.message || "Failed to create RFQ item");
     }
   }
 
@@ -1141,20 +1327,26 @@ export const createRfqItemAPI = async (rfqItemData: CreateRfqItemData, token: st
 /**
  * Update RFQ Item API call
  */
-export const updateRfqItemAPI = async (id: string | number, rfqItemData: Partial<any>, token: string): Promise<any> => {
+export const updateRfqItemAPI = async (
+  id: string | number,
+  rfqItemData: Partial<any>,
+  token: string
+): Promise<any> => {
   const apiRfqItemData: any = {
     ...(rfqItemData.rfq_id !== undefined && { rfq_id: rfqItemData.rfq_id }),
-    ...(rfqItemData.material_id !== undefined && { material_id: rfqItemData.material_id }),
+    ...(rfqItemData.material_id !== undefined && {
+      material_id: rfqItemData.material_id,
+    }),
     ...(rfqItemData.name !== undefined && { name: rfqItemData.name }),
     ...(rfqItemData.qty !== undefined && { qty: rfqItemData.qty }),
     ...(rfqItemData.price !== undefined && { price: rfqItemData.price }),
   };
 
   const response = await fetch(`${getBaseUrl()}/api/rfq-items/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiRfqItemData),
   });
@@ -1164,12 +1356,16 @@ export const updateRfqItemAPI = async (id: string | number, rfqItemData: Partial
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('RFQ item not found');
+      throw new Error("RFQ item not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update RFQ item');
+      throw new Error(errorData.message || "Failed to update RFQ item");
     }
   }
 
@@ -1180,12 +1376,15 @@ export const updateRfqItemAPI = async (id: string | number, rfqItemData: Partial
 /**
  * Delete RFQ Item API call
  */
-export const deleteRfqItemAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteRfqItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/rfq-items/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -1193,16 +1392,16 @@ export const deleteRfqItemAPI = async (id: string | number, token: string): Prom
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('RFQ item not found');
+      throw new Error("RFQ item not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete RFQ item');
+      throw new Error(errorData.message || "Failed to delete RFQ item");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete RFQ item');
+    throw new Error(errorData.message || "Failed to delete RFQ item");
   }
 };
 
@@ -1221,36 +1420,45 @@ const convertApiPurchaseOrderToFrontend = (apiPo: any): any => {
     grandTotal: parseFloat(apiPo.grand_total) || 0,
     created_at: apiPo.created_at,
     updated_at: apiPo.updated_at,
-    items: Array.isArray(apiPo.items) ? apiPo.items.map((item: any) => ({
-      id: item.id?.toString(),
-      po_id: item.po_id?.toString(),
-      material_id: item.material_id?.toString(),
-      name: item.name,
-      qty: item.qty,
-      price: parseFloat(item.price) || 0,
-      created_at: item.created_at,
-      updated_at: item.updated_at
-    })) : [],
-    supplier: apiPo.supplier ? {
-      id: apiPo.supplier.id?.toString(),
-      name: apiPo.supplier.name,
-      address: apiPo.supplier.address,
-      contact: apiPo.supplier.contact,
-    } : undefined,
-    rfq: apiPo.rfq ? {
-      id: apiPo.rfq.id?.toString(),
-      code: apiPo.rfq.code,
-      date: apiPo.rfq.date,
-      description: apiPo.rfq.description,
-      status: apiPo.rfq.status,
-    } : undefined
+    items: Array.isArray(apiPo.items)
+      ? apiPo.items.map((item: any) => ({
+          id: item.id?.toString(),
+          po_id: item.po_id?.toString(),
+          material_id: item.material_id?.toString(),
+          name: item.name,
+          qty: item.qty,
+          price: parseFloat(item.price) || 0,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+        }))
+      : [],
+    supplier: apiPo.supplier
+      ? {
+          id: apiPo.supplier.id?.toString(),
+          name: apiPo.supplier.name,
+          address: apiPo.supplier.address,
+          contact: apiPo.supplier.contact,
+        }
+      : undefined,
+    rfq: apiPo.rfq
+      ? {
+          id: apiPo.rfq.id?.toString(),
+          code: apiPo.rfq.code,
+          date: apiPo.rfq.date,
+          description: apiPo.rfq.description,
+          status: apiPo.rfq.status,
+        }
+      : undefined,
   };
 };
 
 /**
  * Convert frontend field names to API request field names for Purchase Order
  */
-const convertFrontendPurchaseOrderToApi = (frontendPo: any, isCreate: boolean = false): any => {
+const convertFrontendPurchaseOrderToApi = (
+  frontendPo: any,
+  isCreate: boolean = false
+): any => {
   const apiPo: any = {
     code: frontendPo.code,
     date: frontendPo.date,
@@ -1267,7 +1475,7 @@ const convertFrontendPurchaseOrderToApi = (frontendPo: any, isCreate: boolean = 
       material_id: item.material_id || item.materialId,
       name: item.name,
       qty: item.qty,
-      price: item.price
+      price: item.price,
     }));
   }
 
@@ -1279,39 +1487,46 @@ const convertFrontendPurchaseOrderToApi = (frontendPo: any, isCreate: boolean = 
  */
 export const getPurchaseOrdersAPI = async (token: string): Promise<any[]> => {
   const response = await fetch(`${getBaseUrl()}/api/purchase-orders`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch purchase orders');
+    throw new Error(errorData.message || "Failed to fetch purchase orders");
   }
 
   const apiResponse = await response.json();
   // Handle both array response and paginated response
-  const posData = Array.isArray(apiResponse.data) ? apiResponse.data : (apiResponse.data?.data || apiResponse.data || []);
+  const posData = Array.isArray(apiResponse.data)
+    ? apiResponse.data
+    : apiResponse.data?.data || apiResponse.data || [];
   return posData.map(convertApiPurchaseOrderToFrontend);
 };
 
 /**
  * Get single Purchase Order API call
  */
-export const getPurchaseOrderAPI = async (id: string | number, token: string): Promise<any> => {
+export const getPurchaseOrderAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/purchase-orders/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to fetch purchase order with ID: ${id}`);
+    throw new Error(
+      errorData.message || `Failed to fetch purchase order with ID: ${id}`
+    );
   }
 
   const apiPo = await response.json();
@@ -1327,7 +1542,7 @@ export interface CreatePurchaseOrderData {
   supplier_id: string | number;
   rfq_id: string | number;
   description: string;
-  status: 'OPEN' | 'RECEIVED';
+  status: "OPEN" | "RECEIVED";
   grand_total: number;
   po_items: {
     material_id: string | number;
@@ -1337,12 +1552,15 @@ export interface CreatePurchaseOrderData {
   }[];
 }
 
-export const createPurchaseOrderAPI = async (poData: CreatePurchaseOrderData, token: string): Promise<any> => {
+export const createPurchaseOrderAPI = async (
+  poData: CreatePurchaseOrderData,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/purchase-orders`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(poData),
   });
@@ -1352,10 +1570,14 @@ export const createPurchaseOrderAPI = async (poData: CreatePurchaseOrderData, to
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create purchase order');
+      throw new Error(errorData.message || "Failed to create purchase order");
     }
   }
 
@@ -1366,26 +1588,35 @@ export const createPurchaseOrderAPI = async (poData: CreatePurchaseOrderData, to
 /**
  * Update Purchase Order API call
  */
-export const updatePurchaseOrderAPI = async (id: string | number, poData: Partial<any>, token: string): Promise<any> => {
+export const updatePurchaseOrderAPI = async (
+  id: string | number,
+  poData: Partial<any>,
+  token: string
+): Promise<any> => {
   // Only include fields that are actually being updated to avoid validation errors
   const apiPoData: any = {};
 
   if (poData.code !== undefined) apiPoData.code = poData.code;
   if (poData.date !== undefined) apiPoData.date = poData.date;
-  if (poData.supplierId !== undefined) apiPoData.supplier_id = poData.supplierId;
-  if (poData.supplier_id !== undefined) apiPoData.supplier_id = poData.supplier_id;
+  if (poData.supplierId !== undefined)
+    apiPoData.supplier_id = poData.supplierId;
+  if (poData.supplier_id !== undefined)
+    apiPoData.supplier_id = poData.supplier_id;
   if (poData.rfq_id !== undefined) apiPoData.rfq_id = poData.rfq_id;
   if (poData.rfqId !== undefined) apiPoData.rfq_id = poData.rfqId; // Handle both field names
-  if (poData.description !== undefined) apiPoData.description = poData.description;
+  if (poData.description !== undefined)
+    apiPoData.description = poData.description;
   if (poData.status !== undefined) apiPoData.status = poData.status;
-  if (poData.grandTotal !== undefined) apiPoData.grand_total = poData.grandTotal;
-  if (poData.grand_total !== undefined) apiPoData.grand_total = poData.grand_total;
+  if (poData.grandTotal !== undefined)
+    apiPoData.grand_total = poData.grandTotal;
+  if (poData.grand_total !== undefined)
+    apiPoData.grand_total = poData.grand_total;
 
   const response = await fetch(`${getBaseUrl()}/api/purchase-orders/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiPoData),
   });
@@ -1395,12 +1626,16 @@ export const updatePurchaseOrderAPI = async (id: string | number, poData: Partia
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('Purchase order not found');
+      throw new Error("Purchase order not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update purchase order');
+      throw new Error(errorData.message || "Failed to update purchase order");
     }
   }
 
@@ -1411,12 +1646,15 @@ export const updatePurchaseOrderAPI = async (id: string | number, poData: Partia
 /**
  * Delete Purchase Order API call
  */
-export const deletePurchaseOrderAPI = async (id: string | number, token: string): Promise<void> => {
+export const deletePurchaseOrderAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/purchase-orders/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -1424,16 +1662,16 @@ export const deletePurchaseOrderAPI = async (id: string | number, token: string)
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('Purchase order not found');
+      throw new Error("Purchase order not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete purchase order');
+      throw new Error(errorData.message || "Failed to delete purchase order");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete purchase order');
+    throw new Error(errorData.message || "Failed to delete purchase order");
   }
 };
 
@@ -1450,19 +1688,23 @@ const convertApiPoItemToFrontend = (apiPoItem: any): any => {
     price: parseFloat(apiPoItem.price) || 0,
     created_at: apiPoItem.created_at,
     updated_at: apiPoItem.updated_at,
-    purchaseOrder: apiPoItem.purchaseOrder ? {
-      id: apiPoItem.purchaseOrder.id?.toString(),
-      code: apiPoItem.purchaseOrder.code,
-      date: apiPoItem.purchaseOrder.date,
-      supplier_id: apiPoItem.purchaseOrder.supplier_id?.toString(),
-      description: apiPoItem.purchaseOrder.description,
-      status: apiPoItem.purchaseOrder.status,
-      grand_total: parseFloat(apiPoItem.purchaseOrder.grand_total) || 0,
-    } : undefined,
-    material: apiPoItem.material ? {
-      id: apiPoItem.material.id?.toString(),
-      name: apiPoItem.material.name,
-    } : undefined
+    purchaseOrder: apiPoItem.purchaseOrder
+      ? {
+          id: apiPoItem.purchaseOrder.id?.toString(),
+          code: apiPoItem.purchaseOrder.code,
+          date: apiPoItem.purchaseOrder.date,
+          supplier_id: apiPoItem.purchaseOrder.supplier_id?.toString(),
+          description: apiPoItem.purchaseOrder.description,
+          status: apiPoItem.purchaseOrder.status,
+          grand_total: parseFloat(apiPoItem.purchaseOrder.grand_total) || 0,
+        }
+      : undefined,
+    material: apiPoItem.material
+      ? {
+          id: apiPoItem.material.id?.toString(),
+          name: apiPoItem.material.name,
+        }
+      : undefined,
   };
 };
 
@@ -1471,39 +1713,46 @@ const convertApiPoItemToFrontend = (apiPoItem: any): any => {
  */
 export const getPoItemsAPI = async (token: string): Promise<any[]> => {
   const response = await fetch(`${getBaseUrl()}/api/po-items`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch PO items');
+    throw new Error(errorData.message || "Failed to fetch PO items");
   }
 
   const apiResponse = await response.json();
   // Handle both array response and paginated response
-  const poItemsData = Array.isArray(apiResponse.data) ? apiResponse.data : (apiResponse.data?.data || apiResponse.data || []);
+  const poItemsData = Array.isArray(apiResponse.data)
+    ? apiResponse.data
+    : apiResponse.data?.data || apiResponse.data || [];
   return poItemsData.map(convertApiPoItemToFrontend);
 };
 
 /**
  * Get single PO Item API call
  */
-export const getPoItemAPI = async (id: string | number, token: string): Promise<any> => {
+export const getPoItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/po-items/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to fetch PO item with ID: ${id}`);
+    throw new Error(
+      errorData.message || `Failed to fetch PO item with ID: ${id}`
+    );
   }
 
   const apiPoItem = await response.json();
@@ -1521,12 +1770,15 @@ export interface CreatePoItemData {
   price?: number;
 }
 
-export const createPoItemAPI = async (poItemData: CreatePoItemData, token: string): Promise<any> => {
+export const createPoItemAPI = async (
+  poItemData: CreatePoItemData,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/po-items`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(poItemData),
   });
@@ -1536,10 +1788,14 @@ export const createPoItemAPI = async (poItemData: CreatePoItemData, token: strin
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create PO item');
+      throw new Error(errorData.message || "Failed to create PO item");
     }
   }
 
@@ -1550,20 +1806,26 @@ export const createPoItemAPI = async (poItemData: CreatePoItemData, token: strin
 /**
  * Update PO Item API call
  */
-export const updatePoItemAPI = async (id: string | number, poItemData: Partial<any>, token: string): Promise<any> => {
+export const updatePoItemAPI = async (
+  id: string | number,
+  poItemData: Partial<any>,
+  token: string
+): Promise<any> => {
   const apiPoItemData: any = {
     ...(poItemData.po_id !== undefined && { po_id: poItemData.po_id }),
-    ...(poItemData.material_id !== undefined && { material_id: poItemData.material_id }),
+    ...(poItemData.material_id !== undefined && {
+      material_id: poItemData.material_id,
+    }),
     ...(poItemData.name !== undefined && { name: poItemData.name }),
     ...(poItemData.qty !== undefined && { qty: poItemData.qty }),
     ...(poItemData.price !== undefined && { price: poItemData.price }),
   };
 
   const response = await fetch(`${getBaseUrl()}/api/po-items/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiPoItemData),
   });
@@ -1573,12 +1835,16 @@ export const updatePoItemAPI = async (id: string | number, poItemData: Partial<a
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('PO item not found');
+      throw new Error("PO item not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update PO item');
+      throw new Error(errorData.message || "Failed to update PO item");
     }
   }
 
@@ -1589,12 +1855,15 @@ export const updatePoItemAPI = async (id: string | number, poItemData: Partial<a
 /**
  * Delete PO Item API call
  */
-export const deletePoItemAPI = async (id: string | number, token: string): Promise<void> => {
+export const deletePoItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/po-items/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -1602,16 +1871,16 @@ export const deletePoItemAPI = async (id: string | number, token: string): Promi
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('PO item not found');
+      throw new Error("PO item not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete PO item');
+      throw new Error(errorData.message || "Failed to delete PO item");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete PO item');
+    throw new Error(errorData.message || "Failed to delete PO item");
   }
 };
 
@@ -1626,42 +1895,52 @@ const convertApiReceivingGoodToFrontend = (apiReceivingGood: any): any => {
     po_id: apiReceivingGood.po_id?.toString(),
     created_at: apiReceivingGood.created_at,
     updated_at: apiReceivingGood.updated_at,
-    purchase_order: apiReceivingGood.purchase_order ? {
-      id: apiReceivingGood.purchase_order.id?.toString(),
-      code: apiReceivingGood.purchase_order.code,
-      date: apiReceivingGood.purchase_order.date,
-      supplier_id: apiReceivingGood.purchase_order.supplier_id?.toString(),
-      description: apiReceivingGood.purchase_order.description,
-      status: apiReceivingGood.purchase_order.status,
-      grand_total: parseFloat(apiReceivingGood.purchase_order.grand_total) || 0,
-      supplier: apiReceivingGood.purchase_order.supplier ? {
-        id: apiReceivingGood.purchase_order.supplier.id?.toString(),
-        name: apiReceivingGood.purchase_order.supplier.name,
-        contact_person: apiReceivingGood.purchase_order.supplier.contact_person,
-        phone: apiReceivingGood.purchase_order.supplier.phone,
-        email: apiReceivingGood.purchase_order.supplier.email,
-        address: apiReceivingGood.purchase_order.supplier.address,
-      } : undefined,
-    } : undefined,
-    items: Array.isArray(apiReceivingGood.items) ? apiReceivingGood.items.map((item: any) => ({
-      id: item.id?.toString(),
-      receiving_id: item.receiving_id?.toString(),
-      material_id: item.material_id?.toString(),
-      name: item.name,
-      qty: item.qty,
-      created_at: item.created_at,
-      updated_at: item.updated_at,
-      material: item.material ? {
-        id: item.material.id?.toString(),
-        code: item.material.code,
-        name: item.material.name,
-        unit: item.material.unit,
-        current_stock: item.material.current_stock,
-        safety_stock: item.material.safety_stock,
-        price_per_unit: parseFloat(item.material.price_per_unit) || 0,
-        category: item.material.category,
-      } : undefined,
-    })) : [],
+    purchase_order: apiReceivingGood.purchase_order
+      ? {
+          id: apiReceivingGood.purchase_order.id?.toString(),
+          code: apiReceivingGood.purchase_order.code,
+          date: apiReceivingGood.purchase_order.date,
+          supplier_id: apiReceivingGood.purchase_order.supplier_id?.toString(),
+          description: apiReceivingGood.purchase_order.description,
+          status: apiReceivingGood.purchase_order.status,
+          grand_total:
+            parseFloat(apiReceivingGood.purchase_order.grand_total) || 0,
+          supplier: apiReceivingGood.purchase_order.supplier
+            ? {
+                id: apiReceivingGood.purchase_order.supplier.id?.toString(),
+                name: apiReceivingGood.purchase_order.supplier.name,
+                contact_person:
+                  apiReceivingGood.purchase_order.supplier.contact_person,
+                phone: apiReceivingGood.purchase_order.supplier.phone,
+                email: apiReceivingGood.purchase_order.supplier.email,
+                address: apiReceivingGood.purchase_order.supplier.address,
+              }
+            : undefined,
+        }
+      : undefined,
+    items: Array.isArray(apiReceivingGood.items)
+      ? apiReceivingGood.items.map((item: any) => ({
+          id: item.id?.toString(),
+          receiving_id: item.receiving_id?.toString(),
+          material_id: item.material_id?.toString(),
+          name: item.name,
+          qty: item.qty,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          material: item.material
+            ? {
+                id: item.material.id?.toString(),
+                code: item.material.code,
+                name: item.material.name,
+                unit: item.material.unit,
+                current_stock: item.material.current_stock,
+                safety_stock: item.material.safety_stock,
+                price_per_unit: parseFloat(item.material.price_per_unit) || 0,
+                category: item.material.category,
+              }
+            : undefined,
+        }))
+      : [],
   };
 };
 
@@ -1670,16 +1949,16 @@ const convertApiReceivingGoodToFrontend = (apiReceivingGood: any): any => {
  */
 export const getReceivingGoodsAPI = async (token: string): Promise<any[]> => {
   const response = await fetch(`${getBaseUrl()}/api/receiving-goods`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch receiving goods');
+    throw new Error(errorData.message || "Failed to fetch receiving goods");
   }
 
   const apiResponse = await response.json();
@@ -1691,18 +1970,23 @@ export const getReceivingGoodsAPI = async (token: string): Promise<any[]> => {
 /**
  * Get single Receiving Good API call
  */
-export const getReceivingGoodAPI = async (id: string | number, token: string): Promise<any> => {
+export const getReceivingGoodAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/receiving-goods/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to fetch receiving good with ID: ${id}`);
+    throw new Error(
+      errorData.message || `Failed to fetch receiving good with ID: ${id}`
+    );
   }
 
   const apiReceivingGood = await response.json();
@@ -1723,12 +2007,15 @@ export interface CreateReceivingGoodData {
   }[];
 }
 
-export const createReceivingGoodAPI = async (receivingGoodData: CreateReceivingGoodData, token: string): Promise<any> => {
+export const createReceivingGoodAPI = async (
+  receivingGoodData: CreateReceivingGoodData,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/receiving-goods`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(receivingGoodData),
   });
@@ -1738,10 +2025,14 @@ export const createReceivingGoodAPI = async (receivingGoodData: CreateReceivingG
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create receiving good');
+      throw new Error(errorData.message || "Failed to create receiving good");
     }
   }
 
@@ -1752,15 +2043,29 @@ export const createReceivingGoodAPI = async (receivingGoodData: CreateReceivingG
 /**
  * Update Receiving Good API call
  */
-export const updateReceivingGoodAPI = async (id: string | number, receivingGoodData: Partial<any>, token: string): Promise<any> => {
+export const updateReceivingGoodAPI = async (
+  id: string | number,
+  receivingGoodData: Partial<any>,
+  token: string
+): Promise<any> => {
   const apiReceivingGoodData: any = {
-    ...(receivingGoodData.code !== undefined && { code: receivingGoodData.code }),
-    ...(receivingGoodData.date !== undefined && { date: receivingGoodData.date }),
-    ...(receivingGoodData.po_id !== undefined && { po_id: receivingGoodData.po_id }),
+    ...(receivingGoodData.code !== undefined && {
+      code: receivingGoodData.code,
+    }),
+    ...(receivingGoodData.date !== undefined && {
+      date: receivingGoodData.date,
+    }),
+    ...(receivingGoodData.po_id !== undefined && {
+      po_id: receivingGoodData.po_id,
+    }),
   };
 
   // Only include items if they exist
-  if ('items' in receivingGoodData && receivingGoodData.items && Array.isArray(receivingGoodData.items)) {
+  if (
+    "items" in receivingGoodData &&
+    receivingGoodData.items &&
+    Array.isArray(receivingGoodData.items)
+  ) {
     apiReceivingGoodData.items = receivingGoodData.items.map((item: any) => ({
       material_id: item.material_id || item.materialId,
       name: item.name,
@@ -1769,10 +2074,10 @@ export const updateReceivingGoodAPI = async (id: string | number, receivingGoodD
   }
 
   const response = await fetch(`${getBaseUrl()}/api/receiving-goods/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiReceivingGoodData),
   });
@@ -1782,12 +2087,16 @@ export const updateReceivingGoodAPI = async (id: string | number, receivingGoodD
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('Receiving good not found');
+      throw new Error("Receiving good not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update receiving good');
+      throw new Error(errorData.message || "Failed to update receiving good");
     }
   }
 
@@ -1798,12 +2107,15 @@ export const updateReceivingGoodAPI = async (id: string | number, receivingGoodD
 /**
  * Delete Receiving Good API call
  */
-export const deleteReceivingGoodAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteReceivingGoodAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/receiving-goods/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -1811,16 +2123,16 @@ export const deleteReceivingGoodAPI = async (id: string | number, token: string)
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('Receiving good not found');
+      throw new Error("Receiving good not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete receiving good');
+      throw new Error(errorData.message || "Failed to delete receiving good");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete receiving good');
+    throw new Error(errorData.message || "Failed to delete receiving good");
   }
 };
 
@@ -1836,22 +2148,27 @@ const convertApiReceivingItemToFrontend = (apiReceivingItem: any): any => {
     qty: apiReceivingItem.qty,
     created_at: apiReceivingItem.created_at,
     updated_at: apiReceivingItem.updated_at,
-    receiving: apiReceivingItem.receiving ? {
-      id: apiReceivingItem.receiving.id?.toString(),
-      code: apiReceivingItem.receiving.code,
-      date: apiReceivingItem.receiving.date,
-      po_id: apiReceivingItem.receiving.po_id?.toString(),
-    } : undefined,
-    material: apiReceivingItem.material ? {
-      id: apiReceivingItem.material.id?.toString(),
-      code: apiReceivingItem.material.code,
-      name: apiReceivingItem.material.name,
-      unit: apiReceivingItem.material.unit,
-      current_stock: apiReceivingItem.material.current_stock,
-      safety_stock: apiReceivingItem.material.safety_stock,
-      price_per_unit: parseFloat(apiReceivingItem.material.price_per_unit) || 0,
-      category: apiReceivingItem.material.category,
-    } : undefined
+    receiving: apiReceivingItem.receiving
+      ? {
+          id: apiReceivingItem.receiving.id?.toString(),
+          code: apiReceivingItem.receiving.code,
+          date: apiReceivingItem.receiving.date,
+          po_id: apiReceivingItem.receiving.po_id?.toString(),
+        }
+      : undefined,
+    material: apiReceivingItem.material
+      ? {
+          id: apiReceivingItem.material.id?.toString(),
+          code: apiReceivingItem.material.code,
+          name: apiReceivingItem.material.name,
+          unit: apiReceivingItem.material.unit,
+          current_stock: apiReceivingItem.material.current_stock,
+          safety_stock: apiReceivingItem.material.safety_stock,
+          price_per_unit:
+            parseFloat(apiReceivingItem.material.price_per_unit) || 0,
+          category: apiReceivingItem.material.category,
+        }
+      : undefined,
   };
 };
 
@@ -1860,16 +2177,16 @@ const convertApiReceivingItemToFrontend = (apiReceivingItem: any): any => {
  */
 export const getReceivingItemsAPI = async (token: string): Promise<any[]> => {
   const response = await fetch(`${getBaseUrl()}/api/receiving-items`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch receiving items');
+    throw new Error(errorData.message || "Failed to fetch receiving items");
   }
 
   const apiResponse = await response.json();
@@ -1881,18 +2198,23 @@ export const getReceivingItemsAPI = async (token: string): Promise<any[]> => {
 /**
  * Get single Receiving Item API call
  */
-export const getReceivingItemAPI = async (id: string | number, token: string): Promise<any> => {
+export const getReceivingItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/receiving-items/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to fetch receiving item with ID: ${id}`);
+    throw new Error(
+      errorData.message || `Failed to fetch receiving item with ID: ${id}`
+    );
   }
 
   const apiReceivingItem = await response.json();
@@ -1909,12 +2231,15 @@ export interface CreateReceivingItemData {
   qty: number;
 }
 
-export const createReceivingItemAPI = async (receivingItemData: CreateReceivingItemData, token: string): Promise<any> => {
+export const createReceivingItemAPI = async (
+  receivingItemData: CreateReceivingItemData,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/receiving-items`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(receivingItemData),
   });
@@ -1924,10 +2249,14 @@ export const createReceivingItemAPI = async (receivingItemData: CreateReceivingI
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create receiving item');
+      throw new Error(errorData.message || "Failed to create receiving item");
     }
   }
 
@@ -1938,19 +2267,29 @@ export const createReceivingItemAPI = async (receivingItemData: CreateReceivingI
 /**
  * Update Receiving Item API call
  */
-export const updateReceivingItemAPI = async (id: string | number, receivingItemData: Partial<any>, token: string): Promise<any> => {
+export const updateReceivingItemAPI = async (
+  id: string | number,
+  receivingItemData: Partial<any>,
+  token: string
+): Promise<any> => {
   const apiReceivingItemData: any = {
-    ...(receivingItemData.receiving_id !== undefined && { receiving_id: receivingItemData.receiving_id }),
-    ...(receivingItemData.material_id !== undefined && { material_id: receivingItemData.material_id }),
-    ...(receivingItemData.name !== undefined && { name: receivingItemData.name }),
+    ...(receivingItemData.receiving_id !== undefined && {
+      receiving_id: receivingItemData.receiving_id,
+    }),
+    ...(receivingItemData.material_id !== undefined && {
+      material_id: receivingItemData.material_id,
+    }),
+    ...(receivingItemData.name !== undefined && {
+      name: receivingItemData.name,
+    }),
     ...(receivingItemData.qty !== undefined && { qty: receivingItemData.qty }),
   };
 
   const response = await fetch(`${getBaseUrl()}/api/receiving-items/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiReceivingItemData),
   });
@@ -1960,12 +2299,16 @@ export const updateReceivingItemAPI = async (id: string | number, receivingItemD
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('Receiving item not found');
+      throw new Error("Receiving item not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update receiving item');
+      throw new Error(errorData.message || "Failed to update receiving item");
     }
   }
 
@@ -1976,12 +2319,15 @@ export const updateReceivingItemAPI = async (id: string | number, receivingItemD
 /**
  * Delete Receiving Item API call
  */
-export const deleteReceivingItemAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteReceivingItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/receiving-items/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -1989,16 +2335,16 @@ export const deleteReceivingItemAPI = async (id: string | number, token: string)
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('Receiving item not found');
+      throw new Error("Receiving item not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete receiving item');
+      throw new Error(errorData.message || "Failed to delete receiving item");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete receiving item');
+    throw new Error(errorData.message || "Failed to delete receiving item");
   }
 };
 
@@ -2039,7 +2385,7 @@ const convertFrontendProjectItemToApi = (frontendProjectItem: any): any => {
     unit: frontendProjectItem.unit,
     is_bom_locked: frontendProjectItem.is_bom_locked || false,
     is_workflow_locked: frontendProjectItem.is_workflow_locked || false,
-    flow_type: frontendProjectItem.flow_type || 'NEW',
+    flow_type: frontendProjectItem.flow_type || "NEW",
     warehouse_qty: frontendProjectItem.warehouse_qty || 0,
     shipped_qty: frontendProjectItem.shipped_qty || 0,
   };
@@ -2048,37 +2394,40 @@ const convertFrontendProjectItemToApi = (frontendProjectItem: any): any => {
 /**
  * Get all project items API call
  */
-export const getProjectItemsAPI = async (token: string, projectId?: string | number): Promise<any[]> => {
+export const getProjectItemsAPI = async (
+  token: string,
+  projectId?: string | number
+): Promise<any[]> => {
   let url = `${getBaseUrl()}/api/project-items`;
   if (projectId) {
     url += `?project_id=${projectId}`;
   }
 
-
   try {
     const response = await fetch(url, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
       let errorData: any = {};
-      let responseText = '';
+      let responseText = "";
 
       try {
         responseText = await response.text();
         errorData = JSON.parse(responseText);
       } catch (e) {
-        errorData = { message: responseText || 'Unknown error' };
+        errorData = { message: responseText || "Unknown error" };
       }
 
-
-      const errorMessage = errorData.message
-        || (errorData.errors && Object.values(errorData.errors).flat().join(', '))
-        || `Failed to fetch project items (${response.status})`;
+      const errorMessage =
+        errorData.message ||
+        (errorData.errors &&
+          Object.values(errorData.errors).flat().join(", ")) ||
+        `Failed to fetch project items (${response.status})`;
 
       throw new Error(errorMessage);
     }
@@ -2086,11 +2435,15 @@ export const getProjectItemsAPI = async (token: string, projectId?: string | num
     const apiResponse = await response.json();
 
     // Handle both paginated and array responses
-    const projectItemsData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+    const projectItemsData = Array.isArray(apiResponse)
+      ? apiResponse
+      : apiResponse.data?.data || apiResponse.data || [];
     return projectItemsData.map(convertApiProjectItemToFrontend);
   } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error(`Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`);
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      throw new Error(
+        `Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`
+      );
     }
     if (error instanceof Error) {
       throw error;
@@ -2102,18 +2455,23 @@ export const getProjectItemsAPI = async (token: string, projectId?: string | num
 /**
  * Get single project item API call
  */
-export const getProjectItemAPI = async (id: string | number, token: string): Promise<any> => {
+export const getProjectItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/project-items/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to fetch project item with ID: ${id}`);
+    throw new Error(
+      errorData.message || `Failed to fetch project item with ID: ${id}`
+    );
   }
 
   const apiProjectItem = await response.json();
@@ -2133,17 +2491,20 @@ export interface CreateProjectItemData {
   unit: string;
   is_bom_locked?: boolean;
   is_workflow_locked?: boolean;
-  flow_type?: 'OLD' | 'NEW';
+  flow_type?: "OLD" | "NEW";
   warehouse_qty?: number;
   shipped_qty?: number;
 }
 
-export const createProjectItemAPI = async (projectItemData: CreateProjectItemData, token: string): Promise<any> => {
+export const createProjectItemAPI = async (
+  projectItemData: CreateProjectItemData,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/project-items`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(convertFrontendProjectItemToApi(projectItemData)),
   });
@@ -2153,28 +2514,38 @@ export const createProjectItemAPI = async (projectItemData: CreateProjectItemDat
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create project item');
+      throw new Error(errorData.message || "Failed to create project item");
     }
   }
 
   const createdProjectItem = await response.json();
-  return convertApiProjectItemToFrontend(createdProjectItem.data || createdProjectItem);
+  return convertApiProjectItemToFrontend(
+    createdProjectItem.data || createdProjectItem
+  );
 };
 
 /**
  * Update project item API call
  */
-export const updateProjectItemAPI = async (id: string | number, projectItemData: Partial<any>, token: string): Promise<any> => {
+export const updateProjectItemAPI = async (
+  id: string | number,
+  projectItemData: Partial<any>,
+  token: string
+): Promise<any> => {
   const apiProjectItemData = convertFrontendProjectItemToApi(projectItemData);
 
   const response = await fetch(`${getBaseUrl()}/api/project-items/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiProjectItemData),
   });
@@ -2184,28 +2555,37 @@ export const updateProjectItemAPI = async (id: string | number, projectItemData:
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('Project item not found');
+      throw new Error("Project item not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update project item');
+      throw new Error(errorData.message || "Failed to update project item");
     }
   }
 
   const updatedProjectItem = await response.json();
-  return convertApiProjectItemToFrontend(updatedProjectItem.data || updatedProjectItem);
+  return convertApiProjectItemToFrontend(
+    updatedProjectItem.data || updatedProjectItem
+  );
 };
 
 /**
  * Delete project item API call
  */
-export const deleteProjectItemAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteProjectItemAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/project-items/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -2213,16 +2593,289 @@ export const deleteProjectItemAPI = async (id: string | number, token: string): 
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('Project item not found');
+      throw new Error("Project item not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete project item');
+      throw new Error(errorData.message || "Failed to delete project item");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete project item');
+    throw new Error(errorData.message || "Failed to delete project item");
+  }
+};
+
+/**
+ * Convert API response field names to frontend field names for Sub Assembly
+ */
+const convertApiSubAssemblyToFrontend = (apiSubAssembly: any): SubAssembly => {
+  return {
+    id: apiSubAssembly.id?.toString(),
+    item_id: apiSubAssembly.item_id?.toString(),
+    name: apiSubAssembly.name,
+    qtyPerParent:
+      apiSubAssembly.qty_per_parent || apiSubAssembly.qtyPerParent || 0,
+    totalNeeded: apiSubAssembly.total_needed || apiSubAssembly.totalNeeded || 0,
+    completedQty:
+      apiSubAssembly.completed_qty || apiSubAssembly.completedQty || 0,
+    totalProduced:
+      apiSubAssembly.total_produced || apiSubAssembly.totalProduced || 0,
+    consumedQty: apiSubAssembly.consumed_qty || apiSubAssembly.consumedQty || 0,
+    materialId:
+      apiSubAssembly.material_id?.toString() || apiSubAssembly.materialId,
+    processes: Array.isArray(apiSubAssembly.processes)
+      ? apiSubAssembly.processes
+      : [],
+    stepStats: apiSubAssembly.step_stats || apiSubAssembly.stepStats || {},
+    isLocked: apiSubAssembly.is_locked || apiSubAssembly.isLocked || false,
+  };
+};
+
+/**
+ * Convert frontend field names to API request field names for Sub Assembly
+ */
+const convertFrontendSubAssemblyToApi = (
+  frontendSubAssembly: any,
+  isCreate: boolean = false
+): any => {
+  const apiSubAssembly: any = {
+    item_id: frontendSubAssembly.item_id || frontendSubAssembly.itemId,
+    name: frontendSubAssembly.name,
+    qty_per_parent: frontendSubAssembly.qtyPerParent,
+    total_needed: frontendSubAssembly.totalNeeded,
+    completed_qty: frontendSubAssembly.completedQty,
+    total_produced: frontendSubAssembly.totalProduced,
+    consumed_qty: frontendSubAssembly.consumedQty,
+    material_id: frontendSubAssembly.materialId,
+    processes: Array.isArray(frontendSubAssembly.processes)
+      ? frontendSubAssembly.processes
+      : [],
+    step_stats: frontendSubAssembly.stepStats || {},
+    is_locked: frontendSubAssembly.isLocked,
+  };
+
+  // Only include id if it's not for creation
+  if (!isCreate && frontendSubAssembly.id) {
+    apiSubAssembly.id = frontendSubAssembly.id;
+  }
+
+  return apiSubAssembly;
+};
+
+/**
+ * Get all sub assemblies API call
+ */
+export const getSubAssembliesAPI = async (
+  token: string,
+  itemId?: string | number
+): Promise<SubAssembly[]> => {
+  let url = `${getBaseUrl()}/api/sub-assemblies`;
+  if (itemId) {
+    url += `?item_id=${itemId}`;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      let errorData: any = {};
+      let responseText = "";
+
+      try {
+        responseText = await response.text();
+        errorData = JSON.parse(responseText);
+      } catch (e) {
+        errorData = { message: responseText || "Unknown error" };
+      }
+
+      const errorMessage =
+        errorData.message ||
+        (errorData.errors &&
+          Object.values(errorData.errors).flat().join(", ")) ||
+        `Failed to fetch sub assemblies (${response.status})`;
+
+      throw new Error(errorMessage);
+    }
+
+    const apiResponse = await response.json();
+
+    // Handle both paginated and array responses
+    const subAssembliesData = Array.isArray(apiResponse)
+      ? apiResponse
+      : apiResponse.data?.data || apiResponse.data || [];
+    return subAssembliesData.map(convertApiSubAssemblyToFrontend);
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      throw new Error(
+        `Cannot connect to backend. Is the API server running at ${getBaseUrl()}?`
+      );
+    }
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Get single sub assembly API call
+ */
+export const getSubAssemblyAPI = async (
+  id: string | number,
+  token: string
+): Promise<SubAssembly> => {
+  const response = await fetch(`${getBaseUrl()}/sub-assemblies/${id}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.message || `Failed to fetch sub assembly with ID: ${id}`
+    );
+  }
+
+  const apiSubAssembly = await response.json();
+  return convertApiSubAssemblyToFrontend(apiSubAssembly);
+};
+
+/**
+ * Create sub assembly API call
+ */
+export interface CreateSubAssemblyData {
+  item_id: string | number;
+  name: string;
+  qty_per_parent: number;
+  total_needed: number;
+  completed_qty?: number;
+  total_produced?: number;
+  consumed_qty?: number;
+  material_id: string | number;
+  processes: ProcessStep[];
+  step_stats?: any;
+  is_locked: boolean;
+}
+
+export const createSubAssemblyAPI = async (
+  subAssemblyData: CreateSubAssemblyData,
+  token: string
+): Promise<SubAssembly> => {
+  const response = await fetch(`${getBaseUrl()}/sub-assemblies`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      convertFrontendSubAssemblyToApi(subAssemblyData, true)
+    ),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to create sub assembly");
+    }
+  }
+
+  const createdSubAssembly = await response.json();
+  return convertApiSubAssemblyToFrontend(
+    createdSubAssembly.data || createdSubAssembly
+  );
+};
+
+/**
+ * Update sub assembly API call
+ */
+export const updateSubAssemblyAPI = async (
+  id: string | number,
+  subAssemblyData: Partial<SubAssembly>,
+  token: string
+): Promise<SubAssembly> => {
+  const apiSubAssemblyData = convertFrontendSubAssemblyToApi(subAssemblyData);
+
+  const response = await fetch(`${getBaseUrl()}/sub-assemblies/${id}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(apiSubAssemblyData),
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 422) {
+      // Validation errors
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
+    } else if (response.status === 404) {
+      throw new Error("Sub assembly not found");
+    } else {
+      // Other server errors
+      throw new Error(errorData.message || "Failed to update sub assembly");
+    }
+  }
+
+  const updatedSubAssembly = await response.json();
+  return convertApiSubAssemblyToFrontend(
+    updatedSubAssembly.data || updatedSubAssembly
+  );
+};
+
+/**
+ * Delete sub assembly API call
+ */
+export const deleteSubAssemblyAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
+  const response = await fetch(`${getBaseUrl()}/sub-assemblies/${id}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+
+    if (response.status === 404) {
+      throw new Error("Sub assembly not found");
+    } else {
+      throw new Error(errorData.message || "Failed to delete sub assembly");
+    }
+  }
+
+  // DELETE request typically doesn't return a body, so we just check the response status
+  if (response.status !== 200 && response.status !== 204) {
+    const errorData: ErrorResponse = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || "Failed to delete sub assembly");
   }
 };
 
@@ -2231,20 +2884,26 @@ export const deleteProjectItemAPI = async (id: string | number, token: string): 
  */
 const convertApiMachineToFrontend = (apiMachine: any): any => {
   // Extract the main user associated with the machine from the user field
-  const mainUserPersonnel = apiMachine.user ? [{
-    id: apiMachine.user.id?.toString() || apiMachine.user.id,
-    name: apiMachine.user.username || apiMachine.user.name || '',
-    role: 'PIC', // Default role for the main user
-    shift: 'SHIFT_1' // Default shift
-  }] : [];
+  const mainUserPersonnel = apiMachine.user
+    ? [
+        {
+          id: apiMachine.user.id?.toString() || apiMachine.user.id,
+          name: apiMachine.user.username || apiMachine.user.name || "",
+          role: "PIC", // Default role for the main user
+          shift: "SHIFT_1", // Default shift
+        },
+      ]
+    : [];
 
   // Combine with any additional personnel if they exist
-  const additionalPersonnel = Array.isArray(apiMachine.personnel) ? apiMachine.personnel.map((p: any) => ({
-    id: p.id?.toString() || p.id,
-    name: p.name || p.username || p.user?.name || '',
-    role: p.role || p.position || 'OPERATOR',
-    shift: p.shift || 'SHIFT_1'
-  })) : [];
+  const additionalPersonnel = Array.isArray(apiMachine.personnel)
+    ? apiMachine.personnel.map((p: any) => ({
+        id: p.id?.toString() || p.id,
+        name: p.name || p.username || p.user?.name || "",
+        role: p.role || p.position || "OPERATOR",
+        shift: p.shift || "SHIFT_1",
+      }))
+    : [];
 
   return {
     id: apiMachine.id?.toString(),
@@ -2264,7 +2923,10 @@ const convertApiMachineToFrontend = (apiMachine: any): any => {
 /**
  * Convert frontend field names to API request field names for Machine
  */
-const convertFrontendMachineToApi = (frontendMachine: any, isCreate: boolean = false): any => {
+const convertFrontendMachineToApi = (
+  frontendMachine: any,
+  isCreate: boolean = false
+): any => {
   const apiMachine: any = {
     user_id: frontendMachine.userId || frontendMachine.user_id,
     code: frontendMachine.code,
@@ -2276,14 +2938,17 @@ const convertFrontendMachineToApi = (frontendMachine: any, isCreate: boolean = f
   };
 
   // Handle personnel data if it exists
-  if (Array.isArray(frontendMachine.personnel) && frontendMachine.personnel.length > 0) {
+  if (
+    Array.isArray(frontendMachine.personnel) &&
+    frontendMachine.personnel.length > 0
+  ) {
     // For now, we'll just send the personnel array as is
     // In a real implementation, you might want to separate the main user from other personnel
     apiMachine.personnel = frontendMachine.personnel.map((p: any) => ({
       id: p.id,
       name: p.name,
       role: p.role,
-      shift: p.shift
+      shift: p.shift,
     }));
   }
 
@@ -2300,39 +2965,46 @@ const convertFrontendMachineToApi = (frontendMachine: any, isCreate: boolean = f
  */
 export const getMachinesAPI = async (token: string): Promise<any[]> => {
   const response = await fetch(`${getBaseUrl()}/api/machines`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to fetch machines');
+    throw new Error(errorData.message || "Failed to fetch machines");
   }
 
   const apiResponse = await response.json();
   // Handle both array response and paginated response
-  const machinesData = Array.isArray(apiResponse) ? apiResponse : (apiResponse.data?.data || apiResponse.data || []);
+  const machinesData = Array.isArray(apiResponse)
+    ? apiResponse
+    : apiResponse.data?.data || apiResponse.data || [];
   return machinesData.map(convertApiMachineToFrontend);
 };
 
 /**
  * Get single machine API call
  */
-export const getMachineAPI = async (id: string | number, token: string): Promise<any> => {
+export const getMachineAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/machines/${id}`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Failed to fetch machine with ID: ${id}`);
+    throw new Error(
+      errorData.message || `Failed to fetch machine with ID: ${id}`
+    );
   }
 
   const apiMachine = await response.json();
@@ -2352,12 +3024,15 @@ export interface CreateMachineData {
   is_maintenance: boolean;
 }
 
-export const createMachineAPI = async (machineData: CreateMachineData, token: string): Promise<any> => {
+export const createMachineAPI = async (
+  machineData: CreateMachineData,
+  token: string
+): Promise<any> => {
   const response = await fetch(`${getBaseUrl()}/api/machines`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(machineData),
   });
@@ -2367,10 +3042,14 @@ export const createMachineAPI = async (machineData: CreateMachineData, token: st
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to create machine');
+      throw new Error(errorData.message || "Failed to create machine");
     }
   }
 
@@ -2381,25 +3060,37 @@ export const createMachineAPI = async (machineData: CreateMachineData, token: st
 /**
  * Update machine API call
  */
-export const updateMachineAPI = async (id: string | number, machineData: Partial<any>, token: string): Promise<any> => {
+export const updateMachineAPI = async (
+  id: string | number,
+  machineData: Partial<any>,
+  token: string
+): Promise<any> => {
   const apiMachineData = {
     ...(machineData.userId !== undefined && { user_id: machineData.userId }),
     ...(machineData.user_id !== undefined && { user_id: machineData.user_id }),
     ...(machineData.code !== undefined && { code: machineData.code }),
     ...(machineData.name !== undefined && { name: machineData.name }),
     ...(machineData.type !== undefined && { type: machineData.type }),
-    ...(machineData.capacityPerHour !== undefined && { capacity_per_hour: machineData.capacityPerHour }),
-    ...(machineData.capacity_per_hour !== undefined && { capacity_per_hour: machineData.capacity_per_hour }),
+    ...(machineData.capacityPerHour !== undefined && {
+      capacity_per_hour: machineData.capacityPerHour,
+    }),
+    ...(machineData.capacity_per_hour !== undefined && {
+      capacity_per_hour: machineData.capacity_per_hour,
+    }),
     ...(machineData.status !== undefined && { status: machineData.status }),
-    ...(machineData.isMaintenance !== undefined && { is_maintenance: machineData.isMaintenance }),
-    ...(machineData.is_maintenance !== undefined && { is_maintenance: machineData.is_maintenance }),
+    ...(machineData.isMaintenance !== undefined && {
+      is_maintenance: machineData.isMaintenance,
+    }),
+    ...(machineData.is_maintenance !== undefined && {
+      is_maintenance: machineData.is_maintenance,
+    }),
   };
 
   const response = await fetch(`${getBaseUrl()}/api/machines/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(apiMachineData),
   });
@@ -2409,12 +3100,16 @@ export const updateMachineAPI = async (id: string | number, machineData: Partial
 
     if (response.status === 422) {
       // Validation errors
-      throw new Error(errorData.errors ? Object.values(errorData.errors).flat().join(', ') : 'Validation error');
+      throw new Error(
+        errorData.errors
+          ? Object.values(errorData.errors).flat().join(", ")
+          : "Validation error"
+      );
     } else if (response.status === 404) {
-      throw new Error('Machine not found');
+      throw new Error("Machine not found");
     } else {
       // Other server errors
-      throw new Error(errorData.message || 'Failed to update machine');
+      throw new Error(errorData.message || "Failed to update machine");
     }
   }
 
@@ -2425,12 +3120,15 @@ export const updateMachineAPI = async (id: string | number, machineData: Partial
 /**
  * Delete machine API call
  */
-export const deleteMachineAPI = async (id: string | number, token: string): Promise<void> => {
+export const deleteMachineAPI = async (
+  id: string | number,
+  token: string
+): Promise<void> => {
   const response = await fetch(`${getBaseUrl()}/api/machines/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   });
 
@@ -2438,34 +3136,42 @@ export const deleteMachineAPI = async (id: string | number, token: string): Prom
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
 
     if (response.status === 404) {
-      throw new Error('Machine not found');
+      throw new Error("Machine not found");
     } else {
-      throw new Error(errorData.message || 'Failed to delete machine');
+      throw new Error(errorData.message || "Failed to delete machine");
     }
   }
 
   // DELETE request typically doesn't return a body, so we just check the response status
   if (response.status !== 200 && response.status !== 204) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to delete machine');
+    throw new Error(errorData.message || "Failed to delete machine");
   }
 };
 
 /**
  * Toggle machine maintenance API call
  */
-export const toggleMachineMaintenanceAPI = async (id: string | number, token: string): Promise<any> => {
-  const response = await fetch(`${getBaseUrl()}/api/machines/${id}/toggle-maintenance`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
+export const toggleMachineMaintenanceAPI = async (
+  id: string | number,
+  token: string
+): Promise<any> => {
+  const response = await fetch(
+    `${getBaseUrl()}/api/machines/${id}/toggle-maintenance`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
 
   if (!response.ok) {
     const errorData: ErrorResponse = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to toggle machine maintenance');
+    throw new Error(
+      errorData.message || "Failed to toggle machine maintenance"
+    );
   }
 
   const updatedMachine = await response.json();

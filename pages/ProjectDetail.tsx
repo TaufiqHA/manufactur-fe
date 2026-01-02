@@ -9,13 +9,15 @@ import { RAW_STEPS, ASSEMBLY_STEPS, ProcessStep, ItemStepConfig, Project } from 
 export const ProjectDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { projects, items, machines, materials, tasks, logs, addProjectItem, deleteProjectItem, validateWorkflow, addSubAssembly, deleteSubAssembly, lockSubAssembly, loadProjectItems } = useStore();
+  const { projects, items, machines, materials, tasks, logs, addProjectItem, deleteProjectItem, validateWorkflow, addSubAssembly, deleteSubAssembly, lockSubAssembly, loadProjectItems, loadSubAssemblies } = useStore();
 
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState<string | null>(null);
   const [isFlowModalOpen, setIsFlowModalOpen] = useState<string | null>(null);
   const [logDetailSa, setLogDetailSa] = useState<{id: string, name: string} | null>(null);
   const [loading, setLoading] = useState(true);
+  const [subAssemblyLoading, setSubAssemblyLoading] = useState(false);
+  const [subAssemblyActionsLoading, setSubAssemblyActionsLoading] = useState<Record<string, boolean>>({});
   const [projectData, setProjectData] = useState<Project | null>(null);
 
   const [newItem, setNewItem] = useState({ name: '', dimensions: '', thickness: '', qtySet: 1, unit: 'PCS', flowType: 'NEW' as 'OLD' | 'NEW' });
@@ -75,7 +77,9 @@ export const ProjectDetail: React.FC = () => {
         // Load project items from API
         if (id) {
           await loadProjectItems(id);
-          // Note: loadProjectItems will handle errors gracefully and not throw
+          // Load sub assemblies for the project items
+          await loadSubAssemblies();
+          // Note: loadProjectItems and loadSubAssemblies will handle errors gracefully and not throw
         }
       } catch (error) {
         // Error handling for project data loading
@@ -85,7 +89,7 @@ export const ProjectDetail: React.FC = () => {
     };
 
     loadProjectData();
-  }, [id, projects, loadProjectItems]);
+  }, [id, projects, loadProjectItems, loadSubAssemblies]);
 
   // Update project progress when tasks change
   useEffect(() => {
@@ -135,17 +139,24 @@ export const ProjectDetail: React.FC = () => {
     }
   };
 
-  const handleAddSub = (itemId: string) => {
+  const handleAddSub = async (itemId: string) => {
     if (!newSub.name || !newSub.materialId || newSub.processes.length === 0) {
        alert("Lengkapi Nama, Material, dan Tahapan Proses!");
        return;
     }
-    addSubAssembly(itemId, {
-      ...newSub, id: `sa-${Date.now()}`, 
-      totalNeeded: (items.find(i=>i.id===itemId)?.quantity || 0) * newSub.qtyPerParent,
-      completedQty: 0, totalProduced: 0, consumedQty: 0, stepStats: {}, isLocked: false
-    });
-    setNewSub({ name: '', qtyPerParent: 1, materialId: '', processes: [] });
+    setSubAssemblyLoading(true);
+    try {
+      await addSubAssembly(itemId, {
+        ...newSub, id: `sa-${Date.now()}`,
+        totalNeeded: (items.find(i=>i.id===itemId)?.quantity || 0) * newSub.qtyPerParent,
+        completedQty: 0, totalProduced: 0, consumedQty: 0, stepStats: {}, isLocked: false
+      });
+      setNewSub({ name: '', qtyPerParent: 1, materialId: '', processes: [] });
+    } catch (error) {
+      alert('Gagal menambahkan sub assembly. Silakan coba lagi.');
+    } finally {
+      setSubAssemblyLoading(false);
+    }
   };
 
   const startFlowConfig = (item: any) => {
@@ -436,7 +447,7 @@ export const ProjectDetail: React.FC = () => {
                           })}
                        </div>
                     </div>
-                    <button onClick={() => handleAddSub(isSubModalOpen!)} className="md:col-span-4 py-6 bg-slate-900 text-white rounded-[28px] font-black uppercase text-sm tracking-widest shadow-2xl hover:bg-blue-600 transition-all active:scale-95 flex items-center justify-center gap-4"><Save size={20}/> TAMBAHKAN KE RAKITAN</button>
+                    <button onClick={() => handleAddSub(isSubModalOpen!)} disabled={subAssemblyLoading} className="md:col-span-4 py-6 bg-slate-900 text-white rounded-[28px] font-black uppercase text-sm tracking-widest shadow-2xl hover:bg-blue-600 transition-all active:scale-95 flex items-center justify-center gap-4 disabled:opacity-50"><Save size={20}/> {subAssemblyLoading ? 'MEMPROSES...' : 'TAMBAHKAN KE RAKITAN'}</button>
                  </div>
                  <div className="space-y-6">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2"><Hammer size={14}/> KOMPONEN TERDAFTAR</h4>
@@ -451,8 +462,28 @@ export const ProjectDetail: React.FC = () => {
                                </div>
                             </div>
                             <div className="flex gap-2">
-                               {!sa.isLocked ? (<button onClick={() => lockSubAssembly(isSubModalOpen!, sa.id)} className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl shadow-sm hover:bg-emerald-600 hover:text-white transition-all"><Lock size={20}/></button>) : (<div className="p-4 bg-emerald-600 text-white rounded-2xl shadow-lg"><Lock size={20}/></div>)}
-                               <button onClick={() => deleteSubAssembly(isSubModalOpen!, sa.id)} className="p-4 bg-red-50 text-red-300 rounded-2xl hover:bg-red-500 hover:text-white transition-all"><Trash size={20}/></button>
+                               {!sa.isLocked ? (<button onClick={async () => {
+                                 setSubAssemblyActionsLoading(prev => ({...prev, [sa.id]: true}));
+                                 try {
+                                   await lockSubAssembly(isSubModalOpen!, sa.id);
+                                 } catch (error) {
+                                   alert('Gagal mengunci sub assembly. Silakan coba lagi.');
+                                 } finally {
+                                   setSubAssemblyActionsLoading(prev => ({...prev, [sa.id]: false}));
+                                 }
+                               }} disabled={subAssemblyActionsLoading[sa.id]} className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl shadow-sm hover:bg-emerald-600 hover:text-white transition-all disabled:opacity-50"><Lock size={20}/></button>) : (<div className="p-4 bg-emerald-600 text-white rounded-2xl shadow-lg"><Lock size={20}/></div>)}
+                               <button onClick={async () => {
+                                 if (window.confirm('Yakin ingin menghapus sub assembly ini?')) {
+                                   setSubAssemblyActionsLoading(prev => ({...prev, [sa.id]: true}));
+                                   try {
+                                     await deleteSubAssembly(isSubModalOpen!, sa.id);
+                                   } catch (error) {
+                                     alert('Gagal menghapus sub assembly. Silakan coba lagi.');
+                                   } finally {
+                                     setSubAssemblyActionsLoading(prev => ({...prev, [sa.id]: false}));
+                                   }
+                                 }
+                               }} disabled={subAssemblyActionsLoading[sa.id]} className="p-4 bg-red-50 text-red-300 rounded-2xl hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"><Trash size={20}/></button>
                             </div>
                          </div>
                        ))}

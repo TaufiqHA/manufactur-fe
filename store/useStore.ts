@@ -79,9 +79,10 @@ interface AppState {
   addProjectItem: (item: ProjectItem) => Promise<void>;
   deleteProjectItem: (id: string) => Promise<void>;
   loadProjectItems: (projectId?: string) => Promise<void>;
-  addSubAssembly: (itemId: string, sa: SubAssembly) => void;
-  lockSubAssembly: (itemId: string, saId: string) => void;
-  deleteSubAssembly: (itemId: string, saId: string) => void;
+  loadSubAssemblies: (itemId?: string) => Promise<void>;
+  addSubAssembly: (itemId: string, sa: SubAssembly) => Promise<void>;
+  lockSubAssembly: (itemId: string, saId: string) => Promise<void>;
+  deleteSubAssembly: (itemId: string, saId: string) => Promise<void>;
 
   validateWorkflow: (itemId: string, workflow: ItemStepConfig[]) => void;
   unlockWorkflow: (itemId: string) => void;
@@ -260,8 +261,10 @@ export const useStore = create<AppState>((set, get) => ({
     // Try to call the logout API if we have a token
     const token = get().token;
     if (token) {
-      logoutAPI(token).catch(() => {
-        // Logout API failed
+      import('../lib/api').then(mod => {
+        mod.logoutAPI(token).catch(() => {
+          // Logout API failed
+        });
       });
     }
 
@@ -391,20 +394,171 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  addSubAssembly: (itemId, sa) => set(s => ({
-    items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: [...i.subAssemblies, { ...sa, stepStats: {} }] } : i)
-  })),
+  loadSubAssemblies: async (itemId?) => {
+    const token = get().token;
+    if (!token) {
+      return;
+    }
 
-  lockSubAssembly: (itemId, saId) => set(s => ({
-    items: s.items.map(i => i.id === itemId ? {
-      ...i,
-      subAssemblies: i.subAssemblies.map(sa => sa.id === saId ? { ...sa, isLocked: true } : sa)
-    } : i)
-  })),
+    try {
+      const subAssemblies = await import('../lib/api').then(mod =>
+        mod.getSubAssembliesAPI(token, itemId)
+      );
 
-  deleteSubAssembly: (itemId, saId) => set(s => ({
-    items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: i.subAssemblies.filter(sa => sa.id !== saId) } : i)
-  })),
+      // Update items in state with their sub assemblies
+      set(s => {
+        if (itemId) {
+          // Update specific item with its sub assemblies
+          return {
+            items: s.items.map(item =>
+              item.id === itemId ? { ...item, subAssemblies } : item
+            )
+          };
+        } else {
+          // Group sub assemblies by item_id and update all items
+          const subAssembliesByItem = subAssemblies.reduce((acc, sa) => {
+            if (!acc[sa.item_id]) {
+              acc[sa.item_id] = [];
+            }
+            acc[sa.item_id].push(sa);
+            return acc;
+          }, {} as Record<string, any[]>);
+
+          return {
+            items: s.items.map(item => ({
+              ...item,
+              subAssemblies: subAssembliesByItem[item.id] || item.subAssemblies
+            }))
+          };
+        }
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Check if it's a network error
+      if (errorMessage.includes('Cannot connect to backend')) {
+        // Backend API is unreachable
+      } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('currentUser');
+      } else if (errorMessage.includes('500')) {
+        // Server error encountered
+      }
+
+      // Don't crash - just continue with existing sub assemblies
+      // This allows the page to still work even if sub assemblies can't be loaded
+    }
+  },
+
+  addSubAssembly: async (itemId, sa) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: [...i.subAssemblies, { ...sa, stepStats: {} }] } : i)
+      }));
+      return;
+    }
+
+    try {
+      const subAssemblyData = {
+        item_id: itemId,
+        name: sa.name,
+        qty_per_parent: sa.qtyPerParent,
+        total_needed: sa.totalNeeded,
+        completed_qty: sa.completedQty || 0,
+        total_produced: sa.totalProduced || 0,
+        consumed_qty: sa.consumedQty || 0,
+        material_id: sa.materialId,
+        processes: sa.processes,
+        step_stats: sa.stepStats || {},
+        is_locked: sa.isLocked || false
+      };
+
+      const createdSubAssembly = await import('../lib/api').then(mod =>
+        mod.createSubAssemblyAPI(subAssemblyData, token)
+      );
+
+      // Update the state with the created sub assembly from the API
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: [...i.subAssemblies, createdSubAssembly] } : i)
+      }));
+    } catch (error) {
+      console.error('Failed to create sub assembly via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: [...i.subAssemblies, { ...sa, stepStats: {} }] } : i)
+      }));
+      throw error;
+    }
+  },
+
+  lockSubAssembly: async (itemId, saId) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? {
+          ...i,
+          subAssemblies: i.subAssemblies.map(sa => sa.id === saId ? { ...sa, isLocked: true } : sa)
+        } : i)
+      }));
+      return;
+    }
+
+    try {
+      const updatedSubAssembly = await import('../lib/api').then(mod =>
+        mod.updateSubAssemblyAPI(saId, { is_locked: true }, token)
+      );
+
+      // Update the state with the updated sub assembly from the API
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? {
+          ...i,
+          subAssemblies: i.subAssemblies.map(sa => sa.id === saId ? updatedSubAssembly : sa)
+        } : i)
+      }));
+    } catch (error) {
+      console.error('Failed to lock sub assembly via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? {
+          ...i,
+          subAssemblies: i.subAssemblies.map(sa => sa.id === saId ? { ...sa, isLocked: true } : sa)
+        } : i)
+      }));
+      throw error;
+    }
+  },
+
+  deleteSubAssembly: async (itemId, saId) => {
+    const token = get().token;
+    if (!token) {
+      // Fallback to local state if no token
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: i.subAssemblies.filter(sa => sa.id !== saId) } : i)
+      }));
+      return;
+    }
+
+    try {
+      await import('../lib/api').then(mod =>
+        mod.deleteSubAssemblyAPI(saId, token)
+      );
+
+      // Update the state to remove the deleted sub assembly
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: i.subAssemblies.filter(sa => sa.id !== saId) } : i)
+      }));
+    } catch (error) {
+      console.error('Failed to delete sub assembly via API:', error);
+      // Fallback to local state if API fails
+      set(s => ({
+        items: s.items.map(i => i.id === itemId ? { ...i, subAssemblies: i.subAssemblies.filter(sa => sa.id !== saId) } : i)
+      }));
+      throw error;
+    }
+  },
 
   validateWorkflow: (itemId, workflow) => set((state) => {
     const item = state.items.find(i => i.id === itemId);
