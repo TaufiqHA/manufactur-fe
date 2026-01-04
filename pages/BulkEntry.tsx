@@ -97,7 +97,7 @@ export const BulkEntry: React.FC = () => {
         const producedAtThisStep = sa.stepStats[task.step]?.produced || 0;
         return Math.max(0, sa.totalNeeded - producedAtThisStep);
       }
-      const prevStep = sa.processes[processIdx - 1];
+      const prevStep = sa.processes[processIdx];
       return sa.stepStats[prevStep]?.available || 0;
     } else {
       const currentStepIdx = ASSEMBLY_STEPS.indexOf(task.step);

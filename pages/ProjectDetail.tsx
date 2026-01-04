@@ -106,7 +106,6 @@ export const ProjectDetail: React.FC = () => {
 
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState<string | null>(null);
-  const [isFlowModalOpen, setIsFlowModalOpen] = useState<string | null>(null);
   const [logDetailSa, setLogDetailSa] = useState<{
     id: string;
     name: string;
@@ -126,7 +125,6 @@ export const ProjectDetail: React.FC = () => {
     materialId: "",
     processes: [] as ProcessStep[],
   });
-  const [workflowConfig, setWorkflowConfig] = useState<ItemStepConfig[]>([]);
 
   const project = projects.find((p) => p.id === id);
   const projectItems = items?.filter((i) => i.projectId === id) || [];
@@ -244,21 +242,6 @@ export const ProjectDetail: React.FC = () => {
   );
 
 
-  const startFlowConfig = (item: any) => {
-    const initialFlow: ItemStepConfig[] = ASSEMBLY_STEPS.map((step, idx) => ({
-      step,
-      sequence: idx + 1,
-      allocations: [
-        { id: `alloc-${idx}`, machineId: "", targetQty: item.quantity },
-      ],
-    }));
-    setWorkflowConfig(
-      item.workflow && item.workflow.length > 0
-        ? [...item.workflow]
-        : initialFlow
-    );
-    setIsFlowModalOpen(item.id);
-  };
 
   return (
     <div className="space-y-10 pb-20 font-sans">
@@ -418,12 +401,6 @@ export const ProjectDetail: React.FC = () => {
                       <Component size={20} /> MASTER RAKITAN
                     </button>
                   )}
-                  <button
-                    onClick={() => startFlowConfig(item)}
-                    className="flex-1 bg-slate-900 text-white px-8 py-5 rounded-[24px] font-black text-xs uppercase shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95"
-                  >
-                    <Settings2 size={20} /> FLOW ASSEMBLY
-                  </button>
                   <button
                     onClick={() => deleteProjectItem(item.id)}
                     className="p-5 text-slate-300 hover:text-red-500 rounded-3xl transition-all"
@@ -928,82 +905,6 @@ export const ProjectDetail: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL FLOW ASSEMBLY */}
-      {isFlowModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/90 z-[500] flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-white rounded-[56px] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 overflow-hidden">
-            <div className="p-12 border-b flex justify-between items-center bg-slate-50">
-              <div>
-                <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">
-                  Setting Flow Assembly
-                </h2>
-                <p className="text-[10px] font-black text-blue-600 uppercase mt-2">
-                  Alokasi Mesin & Station Kerja Utama
-                </p>
-              </div>
-              <button
-                onClick={() => setIsFlowModalOpen(null)}
-                className="p-4 text-slate-400 hover:bg-slate-200 rounded-full transition-all"
-              >
-                <X size={32} />
-              </button>
-            </div>
-            <div className="p-12 overflow-y-auto space-y-6 custom-scrollbar">
-              {workflowConfig.map((config, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white border-2 border-slate-50 p-8 rounded-[40px] flex flex-col sm:flex-row items-center justify-between gap-8 group hover:border-blue-200 transition-all"
-                >
-                  <div className="flex items-center gap-8">
-                    <div className="w-16 h-16 bg-slate-900 text-white rounded-3xl flex items-center justify-center font-black text-xl shadow-xl group-hover:bg-blue-600 transition-all">
-                      {idx + 1}
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        PROSES UTAMA
-                      </p>
-                      <p className="text-2xl font-black text-slate-900">
-                        {config.step}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="w-full sm:w-80">
-                    <select
-                      className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[24px] font-black outline-none transition-all appearance-none"
-                      value={config.allocations[0].machineId}
-                      onChange={(e) => {
-                        const newFlow = [...workflowConfig];
-                        newFlow[idx].allocations[0].machineId = e.target.value;
-                        setWorkflowConfig(newFlow);
-                      }}
-                    >
-                      <option value="">Pilih Mesin / Station...</option>
-                      {machines
-                        .filter((m) => m.type === config.step)
-                        .map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name} ({m.code})
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="p-12 border-t flex justify-end">
-              <button
-                onClick={() => {
-                  validateWorkflow(isFlowModalOpen!, workflowConfig);
-                  setIsFlowModalOpen(null);
-                }}
-                className="px-16 py-6 bg-blue-600 text-white rounded-[32px] font-black uppercase text-sm tracking-[0.2em] shadow-2xl flex items-center gap-4 hover:bg-emerald-600 transition-all active:scale-95"
-              >
-                <Save size={24} /> TERBITKAN SEMUA TUGAS
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODAL INPUT ITEM */}
       {isItemModalOpen && (

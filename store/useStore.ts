@@ -150,6 +150,7 @@ interface AppState {
     itemId: string,
     workflow: ItemStepConfig[]
   ) => Promise<void>;
+  validateFlowAssembly: (itemId: string) => Promise<void>;
   unlockWorkflow: (itemId: string) => Promise<void>;
   reportProduction: (
     taskId: string,
@@ -541,6 +542,158 @@ export const useStore = create<AppState>((set, get) => ({
           ...createdTasks.map((t) => normalizeResponse(t)),
         ],
       }));
+
+      // Update assembly stats after adding a sub-assembly
+      const currentItem = get().items.find((i) => i.id === itemId);
+      if (currentItem) {
+        // Calculate updated assembly stats based on sub-assemblies
+        // When sub-assemblies are added, we need to update the main item's assembly stats
+        // to reflect the availability of sub-assemblies for the next process steps
+        const updatedAssemblyStats = { ...currentItem.assemblyStats };
+
+        // Initialize all assembly steps if they don't exist
+        ASSEMBLY_STEPS.forEach(step => {
+          if (!updatedAssemblyStats[step]) {
+            updatedAssemblyStats[step] = {
+              produced: 0,
+              available: 0,
+            };
+          }
+        });
+
+        // If there are sub-assemblies and the workflow includes LAS step,
+        // we need to update the availability in the LAS step
+        if (currentItem.subAssemblies && currentItem.subAssemblies.length > 0 && currentItem.workflow) {
+          // Check if workflow includes LAS step
+          const hasLASStep = Array.isArray(currentItem.workflow) && currentItem.workflow.some(config => config.step === 'LAS');
+
+          if (hasLASStep) {
+            // Calculate total needed for all sub-assemblies that would be consumed in LAS step
+            const totalSubAssembliesNeeded = currentItem.subAssemblies.reduce(
+              (total, sa) => total + sa.totalNeeded,
+              0
+            );
+
+            // Update the LAS step availability to reflect the sub-assemblies that will be used
+            updatedAssemblyStats['LAS'] = {
+              ...updatedAssemblyStats['LAS'],
+              available: (updatedAssemblyStats['LAS']?.available || 0) + totalSubAssembliesNeeded,
+            };
+          }
+        }
+
+        // Update the item with the new assembly stats
+        const updatedItem = await projectItemsAPI.update(itemId, {
+          ...currentItem,
+          workflow: currentItem?.workflow || [],
+          warehouseQty:
+            typeof currentItem?.warehouseQty === "number"
+              ? currentItem.warehouseQty
+              : 0,
+          shippedQty:
+            typeof currentItem?.shippedQty === "number"
+              ? currentItem.shippedQty
+              : 0,
+          assemblyStats: updatedAssemblyStats,
+        });
+
+        // Update the local state to reflect the changes
+        set((state) => ({
+          items: state.items.map((i) =>
+            i.id === itemId ? normalizeResponse(updatedItem) : i
+          ),
+        }));
+      }
+
+      // Automatically validate flow assembly after adding a sub-assembly
+      await get().validateFlowAssembly(itemId);
+
+      // If the workflow is not locked, create assembly tasks without raw steps
+      const itemAfterUpdate = get().items.find((i) => i.id === itemId);
+      if (itemAfterUpdate && !itemAfterUpdate.isWorkflowLocked && itemAfterUpdate.quantity) {
+        // Create a default workflow configuration with assembly steps
+        const defaultWorkflow = ASSEMBLY_STEPS.map((step, idx) => ({
+          step,
+          sequence: idx + 1,
+          allocations: [
+            {
+              id: `alloc-${Date.now()}-${idx}`,
+              machineId: "",
+              targetQty: itemAfterUpdate.quantity
+            },
+          ],
+        }));
+
+        // Create tasks only for assembly steps (not raw steps) to avoid duplication
+        const tasksToCreate = defaultWorkflow.flatMap((config) => {
+          // For assembly steps, create a single task for the main item
+          return [
+            {
+              id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
+              projectId: itemAfterUpdate.projectId,
+              projectName: itemAfterUpdate.name,
+              itemId: itemAfterUpdate.id,
+              itemName: itemAfterUpdate.name,
+              step: config.step,
+              machineId: config.allocations[0].machineId,
+              targetQty: config.allocations[0].targetQty,
+              completedQty: 0,
+              defectQty: 0,
+              status: "PENDING",
+              note: config.allocations[0].note,
+              totalDowntimeMinutes: 0,
+            },
+          ];
+        });
+
+        // Create all tasks via API
+        const createdTasks = await Promise.all(
+          tasksToCreate.map((task) => tasksAPI.create(task))
+        );
+
+        // Initialize assemblyStats with all workflow steps
+        const initializedAssemblyStats = defaultWorkflow.reduce((stats, config) => {
+          if (!stats[config.step]) {
+            stats[config.step] = {
+              produced: 0,
+              available: 0,
+            };
+          }
+          return stats;
+        }, itemAfterUpdate.assemblyStats || {});
+
+        // Update the item to lock the workflow via API, ensuring proper types
+        const updatedItem = await projectItemsAPI.update(itemId, {
+          ...itemAfterUpdate,
+          isWorkflowLocked: true,
+          workflow: defaultWorkflow,
+          warehouseQty:
+            typeof itemAfterUpdate.warehouseQty === "number"
+              ? itemAfterUpdate.warehouseQty
+              : 0,
+          shippedQty:
+            typeof itemAfterUpdate.shippedQty === "number"
+              ? itemAfterUpdate.shippedQty
+              : 0,
+          assemblyStats: initializedAssemblyStats,
+        });
+
+        // Update the local state to reflect the changes
+        set((state) => ({
+          items: state.items.map((i) =>
+            i.id === itemId
+              ? {
+                  ...normalizeResponse(updatedItem),
+                  assemblyStats: initializedAssemblyStats,
+                }
+              : i
+          ),
+          tasks: [
+            ...state.tasks.filter((t) => t.itemId !== itemId),
+            ...createdTasks.map((t) => normalizeResponse(t)),
+          ],
+        }));
+      }
     } catch (error) {
       handleApiError(error);
     }
@@ -776,6 +929,73 @@ export const useStore = create<AppState>((set, get) => ({
           ...state.tasks.filter((t) => t.itemId !== itemId),
           ...createdTasks.map((t) => normalizeResponse(t)),
         ],
+      }));
+    } catch (error) {
+      handleApiError(error);
+    }
+  },
+
+  validateFlowAssembly: async (itemId) => {
+    try {
+      const currentItem = get().items.find((i) => i.id === itemId);
+      if (!currentItem) return;
+
+      // Calculate updated assembly stats based on sub-assemblies
+      // When sub-assemblies are added, we need to update the main item's assembly stats
+      // to reflect the availability of sub-assemblies for the next process steps
+      const updatedAssemblyStats = { ...currentItem.assemblyStats };
+
+      // Initialize all assembly steps if they don't exist
+      ASSEMBLY_STEPS.forEach(step => {
+        if (!updatedAssemblyStats[step]) {
+          updatedAssemblyStats[step] = {
+            produced: 0,
+            available: 0,
+          };
+        }
+      });
+
+      // If there are sub-assemblies and the workflow includes LAS step,
+      // we need to update the availability in the LAS step
+      if (currentItem.subAssemblies && currentItem.subAssemblies.length > 0 && currentItem.workflow) {
+        // Check if workflow includes LAS step
+        const hasLASStep = Array.isArray(currentItem.workflow) && currentItem.workflow.some(config => config.step === 'LAS');
+
+        if (hasLASStep) {
+          // Calculate total needed for all sub-assemblies that would be consumed in LAS step
+          const totalSubAssembliesNeeded = currentItem.subAssemblies.reduce(
+            (total, sa) => total + sa.totalNeeded,
+            0
+          );
+
+          // Update the LAS step availability to reflect the sub-assemblies that will be used
+          updatedAssemblyStats['LAS'] = {
+            ...updatedAssemblyStats['LAS'],
+            available: (updatedAssemblyStats['LAS']?.available || 0) + totalSubAssembliesNeeded,
+          };
+        }
+      }
+
+      // Update the item to indicate that flow assembly is validated
+      const updatedItem = await projectItemsAPI.update(itemId, {
+        ...currentItem,
+        workflow: currentItem?.workflow || [],
+        warehouseQty:
+          typeof currentItem?.warehouseQty === "number"
+            ? currentItem.warehouseQty
+            : 0,
+        shippedQty:
+          typeof currentItem?.shippedQty === "number"
+            ? currentItem.shippedQty
+            : 0,
+        assemblyStats: updatedAssemblyStats,
+      });
+
+      // Update the local state to reflect the changes
+      set((state) => ({
+        items: state.items.map((i) =>
+          i.id === itemId ? normalizeResponse(updatedItem) : i
+        ),
       }));
     } catch (error) {
       handleApiError(error);
