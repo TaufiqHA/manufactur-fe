@@ -1,0 +1,5 @@
+{
+  "name": "GondolaFlow MES",
+  "description": "A comprehensive Manufacturing Execution System for gondola production, featuring multi-project management, BOM allocation, machine operator interfaces, and real-time shop floor monitoring.",
+  "requestFramePermissions": []
+}
