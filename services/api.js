@@ -1,6 +1,6 @@
 // frontend/services/api.js
-const API_BASE_URL = "https://api.manufactur.id/api";
-// const API_BASE_URL = "http://localhost:5000/api";
+// const API_BASE_URL = "https://api.manufactur.id/api";
+const API_BASE_URL = "http://localhost:5000/api";
 
 // Utility function to get token from localStorage
 const getAuthToken = () => {
@@ -12,8 +12,13 @@ const getAuthToken = () => {
   return null;
 };
 
-// Utility function to convert SQLite boolean values (0/1) to JavaScript booleans
+// Utility function to convert SQLite boolean values (0/1) to JavaScript booleans and parse JSON fields
 const convertSqliteBooleans = (obj) => {
+  if (Array.isArray(obj)) {
+    // Handle array of objects
+    return obj.map(item => convertSqliteBooleans(item));
+  }
+
   if (typeof obj !== "object" || obj === null) return obj;
 
   // Skip conversion for specific numeric fields that should remain as numbers
@@ -36,8 +41,19 @@ const convertSqliteBooleans = (obj) => {
   ];
 
   const converted = { ...obj };
+
   for (const key in converted) {
-    if (
+    // Handle items field which is stored as JSON string in database
+    if (key === 'items' && typeof converted[key] === 'string') {
+      try {
+        converted[key] = JSON.parse(converted[key]);
+      } catch (e) {
+        console.warn(`Failed to parse items field: ${e.message}`);
+        converted[key] = []; // Default to empty array if parsing fails
+      }
+    }
+    // Handle other fields
+    else if (
       !numericFieldsToPreserve.includes(key) &&
       typeof converted[key] === "number" &&
       (converted[key] === 0 || converted[key] === 1)

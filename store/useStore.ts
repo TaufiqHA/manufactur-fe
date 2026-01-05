@@ -182,10 +182,13 @@ interface AppState {
   addRFQ: (rfq: RFQ) => Promise<void>;
   createPO: (po: PurchaseOrder) => Promise<void>;
   receiveGoods: (receiving: ReceivingGoods) => Promise<void>;
+  addSupplier: (supplier: Supplier) => Promise<void>;
+  refreshRFQs: () => Promise<void>;
   createDeliveryOrder: (sj: DeliveryOrder) => Promise<void>;
   updateDeliveryOrder: (sj: DeliveryOrder) => Promise<void>;
   validateDeliveryOrder: (id: string) => Promise<void>;
   deleteDeliveryOrder: (id: string) => Promise<void>;
+  updatePO: (po: PurchaseOrder) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -275,6 +278,49 @@ export const useStore = create<AppState>((set, get) => ({
       const deliveryOrdersData = safeArray(deliveryOrdersRes);
       const subAssembliesData = safeArray(subAssembliesRes);
 
+      // Normalize RFQs to ensure items is always an array
+      const normalizedRFQs = rfqsData.map((rfq) => {
+        // Parse items if it's a JSON string, otherwise handle as object/array
+        let parsedItems = [];
+        if (typeof rfq.items === 'string') {
+          try {
+            parsedItems = JSON.parse(rfq.items);
+          } catch (e) {
+            console.error('Error parsing RFQ items in frontend:', e);
+            parsedItems = [];
+          }
+        } else if (Array.isArray(rfq.items)) {
+          parsedItems = rfq.items;
+        } else if (typeof rfq.items === "object" && rfq.items !== null) {
+          parsedItems = Object.values(rfq.items);
+        }
+
+        return {
+          ...rfq,
+          items: parsedItems,
+        };
+      });
+
+      // Normalize POs to ensure items is always an array
+      const normalizedPOs = posData.map((po) => ({
+        ...po,
+        items: Array.isArray(po.items)
+          ? po.items
+          : typeof po.items === "object" && po.items !== null
+          ? Object.values(po.items)
+          : [],
+      }));
+
+      // Normalize Receivings to ensure items is always an array
+      const normalizedReceivings = receivingsData.map((receiving) => ({
+        ...receiving,
+        items: Array.isArray(receiving.items)
+          ? receiving.items
+          : typeof receiving.items === "object" && receiving.items !== null
+          ? Object.values(receiving.items)
+          : [],
+      }));
+
       // Group sub-assemblies by itemId to attach to items
       const subAssembliesByItem = subAssembliesData.reduce((acc, sa) => {
         if (!acc[sa.itemId]) {
@@ -310,7 +356,7 @@ export const useStore = create<AppState>((set, get) => ({
 
         // Initialize with all assembly steps to ensure they exist
         const initializedAssemblyStats = {};
-        ASSEMBLY_STEPS.forEach(step => {
+        ASSEMBLY_STEPS.forEach((step) => {
           initializedAssemblyStats[step] = {
             produced: 0,
             available: 0,
@@ -318,7 +364,7 @@ export const useStore = create<AppState>((set, get) => ({
         });
 
         // Then add any workflow-specific steps
-        workflow.forEach(config => {
+        workflow.forEach((config) => {
           if (!initializedAssemblyStats[config.step]) {
             initializedAssemblyStats[config.step] = {
               produced: 0,
@@ -353,9 +399,9 @@ export const useStore = create<AppState>((set, get) => ({
         users: usersData,
         logs: logsData,
         suppliers: suppliersData,
-        rfqs: rfqsData,
-        pos: posData,
-        receivings: receivingsData,
+        rfqs: normalizedRFQs,
+        pos: normalizedPOs,
+        receivings: normalizedReceivings,
         deliveryOrders: deliveryOrdersData,
       });
     } catch (error) {
@@ -552,7 +598,7 @@ export const useStore = create<AppState>((set, get) => ({
         const updatedAssemblyStats = { ...currentItem.assemblyStats };
 
         // Initialize all assembly steps if they don't exist
-        ASSEMBLY_STEPS.forEach(step => {
+        ASSEMBLY_STEPS.forEach((step) => {
           if (!updatedAssemblyStats[step]) {
             updatedAssemblyStats[step] = {
               produced: 0,
@@ -563,9 +609,15 @@ export const useStore = create<AppState>((set, get) => ({
 
         // If there are sub-assemblies and the workflow includes LAS step,
         // we need to update the availability in the LAS step
-        if (currentItem.subAssemblies && currentItem.subAssemblies.length > 0 && currentItem.workflow) {
+        if (
+          currentItem.subAssemblies &&
+          currentItem.subAssemblies.length > 0 &&
+          currentItem.workflow
+        ) {
           // Check if workflow includes LAS step
-          const hasLASStep = Array.isArray(currentItem.workflow) && currentItem.workflow.some(config => config.step === 'LAS');
+          const hasLASStep =
+            Array.isArray(currentItem.workflow) &&
+            currentItem.workflow.some((config) => config.step === "LAS");
 
           if (hasLASStep) {
             // Calculate total needed for all sub-assemblies that would be consumed in LAS step
@@ -575,9 +627,11 @@ export const useStore = create<AppState>((set, get) => ({
             );
 
             // Update the LAS step availability to reflect the sub-assemblies that will be used
-            updatedAssemblyStats['LAS'] = {
-              ...updatedAssemblyStats['LAS'],
-              available: (updatedAssemblyStats['LAS']?.available || 0) + totalSubAssembliesNeeded,
+            updatedAssemblyStats["LAS"] = {
+              ...updatedAssemblyStats["LAS"],
+              available:
+                (updatedAssemblyStats["LAS"]?.available || 0) +
+                totalSubAssembliesNeeded,
             };
           }
         }
@@ -604,7 +658,7 @@ export const useStore = create<AppState>((set, get) => ({
             i.id === itemId
               ? {
                   ...normalizeResponse(updatedItem),
-                  subAssemblies: i.subAssemblies // Preserve existing sub-assemblies
+                  subAssemblies: i.subAssemblies, // Preserve existing sub-assemblies
                 }
               : i
           ),
@@ -616,7 +670,11 @@ export const useStore = create<AppState>((set, get) => ({
 
       // If the workflow is not locked, create assembly tasks without raw steps
       const itemAfterUpdate = get().items.find((i) => i.id === itemId);
-      if (itemAfterUpdate && !itemAfterUpdate.isWorkflowLocked && itemAfterUpdate.quantity) {
+      if (
+        itemAfterUpdate &&
+        !itemAfterUpdate.isWorkflowLocked &&
+        itemAfterUpdate.quantity
+      ) {
         // Create a default workflow configuration with assembly steps
         const defaultWorkflow = ASSEMBLY_STEPS.map((step, idx) => ({
           step,
@@ -625,7 +683,7 @@ export const useStore = create<AppState>((set, get) => ({
             {
               id: `alloc-${Date.now()}-${idx}`,
               machineId: "",
-              targetQty: itemAfterUpdate.quantity
+              targetQty: itemAfterUpdate.quantity,
             },
           ],
         }));
@@ -635,7 +693,9 @@ export const useStore = create<AppState>((set, get) => ({
           // For assembly steps, create a single task for the main item
           return [
             {
-              id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
+              id: `task-${Date.now()}-${Math.random()
+                .toString(36)
+                .substr(2, 9)}`, // Generate unique ID
               projectId: itemAfterUpdate.projectId,
               projectName: itemAfterUpdate.name,
               itemId: itemAfterUpdate.id,
@@ -658,15 +718,18 @@ export const useStore = create<AppState>((set, get) => ({
         );
 
         // Initialize assemblyStats with all workflow steps
-        const initializedAssemblyStats = defaultWorkflow.reduce((stats, config) => {
-          if (!stats[config.step]) {
-            stats[config.step] = {
-              produced: 0,
-              available: 0,
-            };
-          }
-          return stats;
-        }, itemAfterUpdate.assemblyStats || {});
+        const initializedAssemblyStats = defaultWorkflow.reduce(
+          (stats, config) => {
+            if (!stats[config.step]) {
+              stats[config.step] = {
+                produced: 0,
+                available: 0,
+              };
+            }
+            return stats;
+          },
+          itemAfterUpdate.assemblyStats || {}
+        );
 
         // Update the item to lock the workflow via API, ensuring proper types
         const updatedItem = await projectItemsAPI.update(itemId, {
@@ -956,7 +1019,7 @@ export const useStore = create<AppState>((set, get) => ({
       const updatedAssemblyStats = { ...currentItem.assemblyStats };
 
       // Initialize all assembly steps if they don't exist
-      ASSEMBLY_STEPS.forEach(step => {
+      ASSEMBLY_STEPS.forEach((step) => {
         if (!updatedAssemblyStats[step]) {
           updatedAssemblyStats[step] = {
             produced: 0,
@@ -967,9 +1030,15 @@ export const useStore = create<AppState>((set, get) => ({
 
       // If there are sub-assemblies and the workflow includes LAS step,
       // we need to update the availability in the LAS step
-      if (currentItem.subAssemblies && currentItem.subAssemblies.length > 0 && currentItem.workflow) {
+      if (
+        currentItem.subAssemblies &&
+        currentItem.subAssemblies.length > 0 &&
+        currentItem.workflow
+      ) {
         // Check if workflow includes LAS step
-        const hasLASStep = Array.isArray(currentItem.workflow) && currentItem.workflow.some(config => config.step === 'LAS');
+        const hasLASStep =
+          Array.isArray(currentItem.workflow) &&
+          currentItem.workflow.some((config) => config.step === "LAS");
 
         if (hasLASStep) {
           // Calculate total needed for all sub-assemblies that would be consumed in LAS step
@@ -979,9 +1048,11 @@ export const useStore = create<AppState>((set, get) => ({
           );
 
           // Update the LAS step availability to reflect the sub-assemblies that will be used
-          updatedAssemblyStats['LAS'] = {
-            ...updatedAssemblyStats['LAS'],
-            available: (updatedAssemblyStats['LAS']?.available || 0) + totalSubAssembliesNeeded,
+          updatedAssemblyStats["LAS"] = {
+            ...updatedAssemblyStats["LAS"],
+            available:
+              (updatedAssemblyStats["LAS"]?.available || 0) +
+              totalSubAssembliesNeeded,
           };
         }
       }
@@ -1008,7 +1079,7 @@ export const useStore = create<AppState>((set, get) => ({
           i.id === itemId
             ? {
                 ...normalizeResponse(updatedItem),
-                subAssemblies: i.subAssemblies // Preserve existing sub-assemblies
+                subAssemblies: i.subAssemblies, // Preserve existing sub-assemblies
               }
             : i
         ),
@@ -1052,7 +1123,7 @@ export const useStore = create<AppState>((set, get) => ({
           i.id === itemId
             ? {
                 ...normalizeResponse(updatedItem),
-                subAssemblies: i.subAssemblies // Preserve existing sub-assemblies
+                subAssemblies: i.subAssemblies, // Preserve existing sub-assemblies
               }
             : i
         ),
@@ -1072,9 +1143,6 @@ export const useStore = create<AppState>((set, get) => ({
       if (!item) return;
 
       // Log the current state of the item before update
-      console.log("Report Production - Task:", task);
-      console.log("Report Production - Item:", item);
-      console.log("Report Production - Assembly Stats before:", item.assemblyStats);
 
       // Create a production log
       const log = await productionLogsAPI.create({
@@ -1245,7 +1313,6 @@ export const useStore = create<AppState>((set, get) => ({
             };
           }
 
-
           if (currentStepIdx > 0) {
             return {
               ...it,
@@ -1277,10 +1344,14 @@ export const useStore = create<AppState>((set, get) => ({
 
           // For each sub-assembly, reduce completedQty by the amount consumed in LAS
           const updatedSubAssemblies = it.subAssemblies.map((sa) => {
-            const consumedFromThisSubAssembly = goodQty * (sa.qtyPerParent || 1);
+            const consumedFromThisSubAssembly =
+              goodQty * (sa.qtyPerParent || 1);
             const updatedSA = {
               ...sa,
-              completedQty: Math.max(0, sa.completedQty - consumedFromThisSubAssembly),
+              completedQty: Math.max(
+                0,
+                sa.completedQty - consumedFromThisSubAssembly
+              ),
             };
             subAssembliesToUpdate.push(updatedSA);
             return updatedSA;
@@ -1316,10 +1387,9 @@ export const useStore = create<AppState>((set, get) => ({
       }
 
       // Log the updated items
-      console.log("Report Production - Assembly Stats after:", updatedItems.find(i => i.id === item.id)?.assemblyStats);
 
       // Update the item in the backend
-      const itemToUpdate = updatedItems.find(i => i.id === item.id);
+      const itemToUpdate = updatedItems.find((i) => i.id === item.id);
       if (itemToUpdate) {
         await projectItemsAPI.update(itemToUpdate.id, {
           ...itemToUpdate,
@@ -1620,12 +1690,15 @@ export const useStore = create<AppState>((set, get) => ({
       // Update assembly stats to remove the validated quantity from PACKING.produced
       // (not available, because available is for items ready to enter PACKING)
       const updatedAssemblyStats = { ...item.assemblyStats };
-      if (!updatedAssemblyStats['PACKING']) {
-        updatedAssemblyStats['PACKING'] = { produced: 0, available: 0 };
+      if (!updatedAssemblyStats["PACKING"]) {
+        updatedAssemblyStats["PACKING"] = { produced: 0, available: 0 };
       }
-      updatedAssemblyStats['PACKING'] = {
-        ...updatedAssemblyStats['PACKING'],
-        produced: Math.max(0, (updatedAssemblyStats['PACKING']?.produced || 0) - qty),
+      updatedAssemblyStats["PACKING"] = {
+        ...updatedAssemblyStats["PACKING"],
+        produced: Math.max(
+          0,
+          (updatedAssemblyStats["PACKING"]?.produced || 0) - qty
+        ),
       };
 
       // Update the item's warehouse quantity
@@ -1643,7 +1716,7 @@ export const useStore = create<AppState>((set, get) => ({
           i.id === itemId
             ? {
                 ...updatedItem,
-                subAssemblies: i.subAssemblies // Preserve existing sub-assemblies
+                subAssemblies: i.subAssemblies, // Preserve existing sub-assemblies
               }
             : i
         ),
@@ -1673,12 +1746,102 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  updatePO: async (po) => {
+    try {
+      const updatedPo = await purchaseOrdersAPI.update(po.id, po);
+      set((state) => ({
+        pos: state.pos.map(p => p.id === po.id ? normalizeResponse(updatedPo) : p)
+      }));
+    } catch (error) {
+      handleApiError(error);
+    }
+  },
+
   receiveGoods: async (r) => {
     try {
       const newReceiving = await receivingGoodsAPI.create(r);
+
+      // Update material stock for each received item
+      const updatedMaterials = [...get().materials];
+      for (const item of r.items) {
+        const materialIndex = updatedMaterials.findIndex(m => m.id === item.materialId);
+        if (materialIndex !== -1) {
+          const material = updatedMaterials[materialIndex];
+          const updatedMaterial = {
+            ...material,
+            currentStock: material.currentStock + item.qty,
+            // Ensure pricePerUnit is a valid non-negative number
+            pricePerUnit: typeof material.pricePerUnit === 'number' && material.pricePerUnit >= 0
+              ? material.pricePerUnit
+              : 0
+          };
+
+          // Update the material in the API
+          await materialsAPI.update(material.id, updatedMaterial);
+          updatedMaterials[materialIndex] = normalizeResponse(updatedMaterial);
+        }
+      }
+
+      // Update the purchase order status to 'RECEIVED'
+      const poToBeUpdated = get().pos.find(po => po.id === r.poId);
+      if (poToBeUpdated) {
+        const updatedPo = {
+          ...poToBeUpdated,
+          status: 'RECEIVED'
+        };
+
+        await get().updatePO(updatedPo);
+      }
+
       set((state) => ({
         receivings: [normalizeResponse(newReceiving), ...state.receivings],
+        materials: updatedMaterials
       }));
+    } catch (error) {
+      handleApiError(error);
+    }
+  },
+
+  addSupplier: async (supplier) => {
+    try {
+      const newSupplier = await suppliersAPI.create(supplier);
+      set((state) => ({
+        suppliers: [normalizeResponse(newSupplier), ...state.suppliers],
+      }));
+    } catch (error) {
+      handleApiError(error);
+    }
+  },
+
+  refreshRFQs: async () => {
+    try {
+      const rfqsRes = await rfqsAPI.getAll(1, 10000);
+      const rfqsData = Array.isArray(rfqsRes) ? rfqsRes : [];
+
+      // Normalize RFQs to ensure items is always an array
+      const normalizedRFQs = rfqsData.map((rfq) => {
+        // Parse items if it's a JSON string, otherwise handle as object/array
+        let parsedItems = [];
+        if (typeof rfq.items === 'string') {
+          try {
+            parsedItems = JSON.parse(rfq.items);
+          } catch (e) {
+            console.error('Error parsing RFQ items in frontend:', e);
+            parsedItems = [];
+          }
+        } else if (Array.isArray(rfq.items)) {
+          parsedItems = rfq.items;
+        } else if (typeof rfq.items === "object" && rfq.items !== null) {
+          parsedItems = Object.values(rfq.items);
+        }
+
+        return {
+          ...rfq,
+          items: parsedItems,
+        };
+      });
+
+      set((state) => ({ rfqs: normalizedRFQs }));
     } catch (error) {
       handleApiError(error);
     }
