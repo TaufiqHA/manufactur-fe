@@ -1,5 +1,5 @@
 // frontend/services/api.js
-const API_BASE_URL = "https://api.manufactur.api/api";
+const API_BASE_URL = "https://api.manufactur.id/api";
 // const API_BASE_URL = "http://localhost:5000/api";
 
 // Utility function to get token from localStorage
