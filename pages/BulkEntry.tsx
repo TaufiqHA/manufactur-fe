@@ -45,8 +45,15 @@ const STEP_PRIORITY: Record<ProcessStep, number> = {
 };
 
 export const BulkEntry: React.FC = () => {
-  const { projects, items, tasks, currentUser, users, reportProduction, initialize } =
-    useStore();
+  const {
+    projects,
+    items,
+    tasks,
+    currentUser,
+    users,
+    reportProduction,
+    initialize,
+  } = useStore();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("ALL");
   const [selectedStep, setSelectedStep] = useState<string>("ALL");

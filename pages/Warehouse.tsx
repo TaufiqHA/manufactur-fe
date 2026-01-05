@@ -10,6 +10,10 @@ export const Warehouse: React.FC = () => {
   const [editingItem, setEditingItem] = useState<{ id: string, name: string, qty: number } | null>(null);
   const [historyItem, setHistoryItem] = useState<string | null>(null);
 
+  const formatNumber = (num: number) => {
+    return num.toLocaleString('id-ID');
+  };
+
   const processedItems = useMemo(() => {
     return items.map(item => {
       // Stok menunggu validasi diambil dari nilai yang disave pada PACKING (produced), bukan available
@@ -69,9 +73,9 @@ export const Warehouse: React.FC = () => {
                   <tr key={item.id} className="hover:bg-slate-50/50">
                     <td className="px-8 py-5 uppercase">{item.name}</td>
                     <td className="px-8 py-5 text-blue-600 text-[10px] uppercase">{item.projectName}</td>
-                    <td className="px-8 py-5 text-center text-slate-400">{item.assemblyStats?.['PACKING']?.produced || 0}</td>
+                    <td className="px-8 py-5 text-center text-slate-400">{formatNumber(item.assemblyStats?.['PACKING']?.produced || 0)}</td>
                     <td className="px-8 py-5 text-center">
-                      <span className="text-emerald-600 font-black text-lg">+{item.pendingValidation}</span>
+                      <span className="text-emerald-600 font-black text-lg">+{formatNumber(item.pendingValidation)}</span>
                     </td>
                     <td className="px-8 py-5 text-right">
                       <button 
@@ -121,10 +125,10 @@ export const Warehouse: React.FC = () => {
                   <tr key={it.id} className="hover:bg-slate-50/50 group">
                     <td className="px-8 py-5 uppercase">{it.name}</td>
                     <td className="px-8 py-5 text-blue-600 text-[10px] uppercase">{it.projectName}</td>
-                    <td className="px-8 py-5 text-center text-slate-400">{it.warehouseQty}</td>
+                    <td className="px-8 py-5 text-center text-slate-400">{formatNumber(it.warehouseQty)}</td>
                     <td className="px-8 py-5 text-center">
                       <span className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl border border-blue-100 font-black text-lg">
-                        {it.availableStock} {it.unit}
+                        {formatNumber(it.availableStock)} {it.unit}
                       </span>
                     </td>
                     <td className="px-8 py-5 text-right">
@@ -164,7 +168,7 @@ export const Warehouse: React.FC = () => {
                        </div>
                        <div className="text-right">
                           <p className={`text-2xl font-black ${log.type === 'WAREHOUSE_ENTRY' ? 'text-emerald-600' : 'text-blue-600'}`}>
-                             +{log.goodQty}
+                             +{formatNumber(log.goodQty)}
                           </p>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PCS</p>
                        </div>

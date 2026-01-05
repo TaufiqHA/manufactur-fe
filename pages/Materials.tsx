@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { Plus, Edit3, X, Search, ChevronLeft, ChevronRight, Package, AlertCircle } from 'lucide-react';
@@ -10,6 +9,10 @@ const UNITS = ['PCS', 'BOX', 'LEMBAR', 'KG', 'METER', 'ROLL', 'SET'];
 export const Materials: React.FC = () => {
   const { materials, addMaterial, updateMaterial, adjustStock, can } = useStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const formatNumber = (num: number) => {
+    return num.toLocaleString('id-ID');
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -111,11 +114,11 @@ export const Materials: React.FC = () => {
                          <span className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest border ${mat.category === 'RAW' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-slate-50 text-slate-600 border-slate-100'}`}>{mat.category}</span>
                       </td>
                       <td className="px-8 py-5 text-center">
-                         <span className={`text-xl font-black ${Number(mat.currentStock) < Number(mat.safetyStock) ? 'text-red-600' : 'text-slate-800'}`}>{Number(mat.currentStock).toFixed(2)}</span>
+                         <span className={`text-xl font-black ${Number(mat.currentStock) < Number(mat.safetyStock) ? 'text-red-600' : 'text-slate-800'}`}>{formatNumber(Number(mat.currentStock))}</span>
                          <span className="text-[9px] text-slate-400 ml-2 uppercase tracking-tighter">{mat.unit}</span>
                       </td>
-                      <td className="px-8 py-5 text-center text-slate-500 font-bold">{Number(mat.safetyStock)} <span className="text-[9px] uppercase tracking-tighter">{mat.unit}</span></td>
-                      <td className="px-8 py-5 text-right font-black text-slate-900">Rp {Number(mat.pricePerUnit).toLocaleString()}</td>
+                      <td className="px-8 py-5 text-center text-slate-500 font-bold">{formatNumber(Number(mat.safetyStock))} <span className="text-[9px] uppercase tracking-tighter">{mat.unit}</span></td>
+                      <td className="px-8 py-5 text-right font-black text-slate-900">Rp {formatNumber(Number(mat.pricePerUnit))}</td>
                       <td className="px-8 py-5 text-right">
                          <div className="flex justify-end gap-2">
                             <button onClick={() => setAdjustModal({id: mat.id, name: mat.name})} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg" title="Adjustment Stock"><Package size={18}/></button>

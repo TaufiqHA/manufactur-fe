@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { Plus, Trash2, Edit3, X, ChevronLeft, ChevronRight, Search, UserCheck } from 'lucide-react';
@@ -30,8 +29,8 @@ export const Users: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
-  const [formData, setFormData] = useState<Partial<User>>({ 
-      name: '', username: '', role: 'OPERATOR', permissions: JSON.parse(JSON.stringify(INITIAL_PERMISSIONS)) 
+  const [formData, setFormData] = useState<Partial<User>>({
+      name: '', username: '', role: 'OPERATOR', permissions: JSON.parse(JSON.stringify(INITIAL_PERMISSIONS))
   });
 
   if (!can('view', 'USERS')) return <div className="p-12 text-center text-slate-500 font-bold">Akses Ditolak.</div>;
@@ -42,7 +41,16 @@ export const Users: React.FC = () => {
 
   const handleOpenEdit = (u: User) => {
     setEditingId(u.id);
-    setFormData({...u, permissions: u.permissions || JSON.parse(JSON.stringify(INITIAL_PERMISSIONS))});
+    // Ensure all modules have complete permission structures
+    const normalizedPermissions = { ...JSON.parse(JSON.stringify(INITIAL_PERMISSIONS)) };
+    if (u.permissions && typeof u.permissions === 'object') {
+      Object.entries(u.permissions).forEach(([module, perms]) => {
+        if (perms && typeof perms === 'object') {
+          normalizedPermissions[module as ModuleName] = { ...normalizedPermissions[module as ModuleName], ...perms };
+        }
+      });
+    }
+    setFormData({...u, permissions: normalizedPermissions});
     setIsModalOpen(true);
   };
 
@@ -50,16 +58,20 @@ export const Users: React.FC = () => {
       setFormData(prev => ({
           ...prev,
           permissions: {
-              ...prev.permissions!,
-              [module]: { ...prev.permissions![module], [action]: !prev.permissions![module][action] }
+              ...(prev.permissions || {}),
+              [module]: {
+                  ...(prev.permissions?.[module] || { view: false, create: false, edit: false, delete: false }),
+                  [action]: !(prev.permissions?.[module]?.[action] || false)
+              }
           }
       }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      if (editingId) { updateUser({ ...formData, id: editingId } as User); }
-      else { addUser({ ...formData, id: `u-${Date.now()}` } as User); }
+      const defaultPassword = '123456'; // Default password
+      if (editingId) { updateUser({ ...formData, id: editingId, password: defaultPassword } as User); }
+      else { addUser({ ...formData, id: `u-${Date.now()}`, password: defaultPassword } as User); }
       setIsModalOpen(false);
   };
 
@@ -103,7 +115,7 @@ export const Users: React.FC = () => {
                       <td className="px-8 py-5"><span className="bg-slate-100 px-3 py-1 rounded-xl text-[10px] font-black uppercase text-slate-600 tracking-widest border border-slate-200">{user.role}</span></td>
                       <td className="px-8 py-5">
                          <div className="flex gap-1 flex-wrap max-w-xs">
-                            {Object.entries(user.permissions || {}).filter(([_, p]) => (p as any).view).map(([mod]) => (
+                            {Object.entries(user.permissions || {}).filter(([_, p]) => p && typeof p === 'object' && (p as any).view).map(([mod]) => (
                                <span key={mod} className="px-2 py-0.5 bg-white border border-slate-200 text-slate-400 text-[8px] font-black rounded uppercase">{mod}</span>
                             ))}
                          </div>
@@ -170,7 +182,7 @@ export const Users: React.FC = () => {
                                       <td className="px-8 py-5 font-black text-slate-800 uppercase tracking-tighter">{mod}</td>
                                       {['view', 'create', 'edit', 'delete'].map(action => (
                                          <td key={action} className="px-8 py-5 text-center">
-                                            <input type="checkbox" className="w-6 h-6 rounded-lg text-blue-600" checked={(formData.permissions![mod] as any)[action]} onChange={() => handlePermissionChange(mod, action as any)} />
+                                            <input type="checkbox" className="w-6 h-6 rounded-lg text-blue-600" checked={formData.permissions?.[mod]?.[action as keyof typeof INITIAL_PERMISSIONS['DASHBOARD']] || false} onChange={() => handlePermissionChange(mod, action as any)} />
                                          </td>
                                       ))}
                                    </tr>

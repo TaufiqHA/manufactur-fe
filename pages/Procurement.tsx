@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { 
@@ -11,7 +10,11 @@ type TabType = 'SUPPLIERS' | 'RFQ' | 'PO' | 'RECEIVING';
 export const Procurement: React.FC = () => {
   const { suppliers, rfqs, pos, receivings, materials, addRFQ, createPO, receiveGoods, can } = useStore();
   const [activeTab, setActiveTab] = useState<TabType>('RFQ');
-  
+
+  const formatNumber = (num: number) => {
+    return num.toLocaleString('id-ID');
+  };
+
   const [isRfqModalOpen, setIsRfqModalOpen] = useState(false);
   const [isPoModalOpen, setIsPoModalOpen] = useState<RFQ | null>(null);
   const [isBdModalOpen, setIsBdModalOpen] = useState<PurchaseOrder | null>(null);
@@ -211,7 +214,7 @@ export const Procurement: React.FC = () => {
                                <p className="text-[9px] text-slate-400 font-black uppercase mt-1 tracking-widest">Ref ID: {it.materialId}</p>
                             </div>
                             <div className="flex items-center gap-8">
-                               <p className="text-2xl font-black text-blue-600 leading-none">{it.qty}</p>
+                               <p className="text-2xl font-black text-blue-600 leading-none">{formatNumber(it.qty)}</p>
                                <button onClick={() => setNewRfq(prev => ({...prev, items: prev.items.filter((_, i) => i !== idx)}))} className="p-2 text-red-300 hover:text-red-500 transition-all"><Trash2 size={20}/></button>
                             </div>
                          </div>

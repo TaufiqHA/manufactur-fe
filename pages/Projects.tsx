@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
@@ -14,6 +13,10 @@ export const Projects: React.FC = () => {
   // Ensure projects is always an array as a safety measure
   const projectsArray = Array.isArray(projects) ? projects : [];
   const navigate = useNavigate();
+
+  const formatNumber = (num: number) => {
+    return num.toLocaleString('id-ID');
+  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -130,9 +133,9 @@ export const Projects: React.FC = () => {
                     <p className="font-black text-slate-800 text-base">{p.name}</p>
                   </td>
                   <td className="px-8 py-5 text-slate-500">{p.customer}</td>
-                  <td className="px-8 py-5 text-center font-black text-slate-700">{p.procurementQty}</td>
+                  <td className="px-8 py-5 text-center font-black text-slate-700">{formatNumber(p.procurementQty)}</td>
                   <td className="px-8 py-5 text-center">
-                    <span className="font-black text-blue-700 text-lg">{p.totalQty}</span>
+                    <span className="font-black text-blue-700 text-lg">{formatNumber(p.totalQty)}</span>
                     <span className="text-[9px] text-slate-400 ml-1 uppercase">{p.unit}</span>
                   </td>
                   <td className="px-8 py-5 text-slate-600">{new Date(p.deadline).toLocaleDateString('id-ID')}</td>
@@ -197,7 +200,7 @@ export const Projects: React.FC = () => {
                     </div>
                     <div className="text-center md:text-right">
                       <p className="text-[11px] font-black text-blue-400 uppercase mb-1 flex items-center justify-center md:justify-end gap-2"><Calculator size={14}/> Total Target</p>
-                      <p className="text-4xl md:text-5xl font-black text-blue-800 leading-none">{calculatedTotal} <span className="text-lg md:text-xl text-blue-400 uppercase">{formData.unit}</span></p>
+                      <p className="text-4xl md:text-5xl font-black text-blue-800 leading-none">{formatNumber(calculatedTotal)} <span className="text-lg md:text-xl text-blue-400 uppercase">{formData.unit}</span></p>
                     </div>
                   </div>
                 </div>

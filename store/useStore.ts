@@ -1225,31 +1225,24 @@ export const useStore = create<AppState>((set, get) => ({
             available: 0,
           };
 
-          // Update current step stats
-          // SPECIAL CASE: For PACKING step (last assembly step), decrease available as items are packed
-          if (task.step === "PACKING") {
-            nextAssemblyStats[task.step] = {
-              produced: current.produced + goodQty,
-              available: Math.max(0, current.available - (goodQty + defectQty)),
-            };
-          } else {
-            nextAssemblyStats[task.step] = {
-              produced: current.produced + goodQty,
-              available: Math.max(0, current.available - (goodQty + defectQty)),
-            };
+          // Update current step stats - decrease available for all assembly steps
+          nextAssemblyStats[task.step] = {
+            produced: current.produced + goodQty,
+            available: Math.max(0, current.available - (goodQty + defectQty)),
+          };
 
-            // Add good quantity to the next step's available
-            if (
-              currentStepIdx >= 0 &&
-              currentStepIdx < ASSEMBLY_STEPS.length - 1
-            ) {
-              const nextStep = ASSEMBLY_STEPS[currentStepIdx + 1];
-              nextAssemblyStats[nextStep] = {
-                ...nextAssemblyStats[nextStep],
-                available:
-                  (nextAssemblyStats[nextStep]?.available || 0) + goodQty,
-              };
-            }
+          // Add good quantity to the next step's available (except for PACKING which is the last step)
+          if (
+            task.step !== "PACKING" &&
+            currentStepIdx >= 0 &&
+            currentStepIdx < ASSEMBLY_STEPS.length - 1
+          ) {
+            const nextStep = ASSEMBLY_STEPS[currentStepIdx + 1];
+            nextAssemblyStats[nextStep] = {
+              ...nextAssemblyStats[nextStep],
+              available:
+                (nextAssemblyStats[nextStep]?.available || 0) + goodQty,
+            };
           }
 
 
@@ -1262,53 +1255,9 @@ export const useStore = create<AppState>((set, get) => ({
               shippedQty: typeof it.shippedQty === "number" ? it.shippedQty : 0,
               assemblyStats: nextAssemblyStats,
             };
-          } else if (task.step === "LAS") {
-            return {
-              ...it,
-              workflow: it.workflow || [],
-              warehouseQty:
-                typeof it.warehouseQty === "number" ? it.warehouseQty : 0,
-              shippedQty: typeof it.shippedQty === "number" ? it.shippedQty : 0,
-              assemblyStats: nextAssemblyStats,
-              subAssemblies: it.subAssemblies.map((sa) => {
-                const newCompletedQty = Math.max(
-                  0,
-                  sa.completedQty - (goodQty + defectQty) * sa.qtyPerParent
-                );
-                const nextSaStats = { ...sa.stepStats };
-                // Convert processes to array if it's stored as an object
-                const processesArray = Array.isArray(sa.processes)
-                  ? sa.processes
-                  : Object.values(sa.processes || []);
-                const lastProcess = processesArray[processesArray.length - 1];
-
-                if (lastProcess) {
-                  const lpData = nextSaStats[lastProcess] || {
-                    produced: 0,
-                    available: 0,
-                  };
-                  nextSaStats[lastProcess] = {
-                    ...lpData,
-                    available: newCompletedQty,
-                  };
-                }
-
-                const updatedSubAssembly = {
-                  ...sa,
-                  stepStats: nextSaStats,
-                  completedQty: newCompletedQty,
-                  consumedQty:
-                    sa.consumedQty + (goodQty + defectQty) * sa.qtyPerParent,
-                };
-
-                // Add to list of sub-assemblies to update in backend
-                subAssembliesToUpdate.push(updatedSubAssembly);
-
-                return updatedSubAssembly;
-              }),
-            };
           } else {
-            // For other assembly steps including the first one (LAS)
+            // For all assembly steps (including LAS)
+            // Do not update sub-assembly stats - only assembly stats
             return {
               ...it,
               workflow: it.workflow || [],
@@ -1318,6 +1267,29 @@ export const useStore = create<AppState>((set, get) => ({
               assemblyStats: nextAssemblyStats,
             };
           }
+        });
+      }
+
+      // Special handling for LAS step: reduce sub-assembly completedQty by consumption
+      if (!task.subAssemblyId && task.step === "LAS") {
+        updatedItems = updatedItems.map((it) => {
+          if (it.id !== item.id) return it;
+
+          // For each sub-assembly, reduce completedQty by the amount consumed in LAS
+          const updatedSubAssemblies = it.subAssemblies.map((sa) => {
+            const consumedFromThisSubAssembly = goodQty * (sa.qtyPerParent || 1);
+            const updatedSA = {
+              ...sa,
+              completedQty: Math.max(0, sa.completedQty - consumedFromThisSubAssembly),
+            };
+            subAssembliesToUpdate.push(updatedSA);
+            return updatedSA;
+          });
+
+          return {
+            ...it,
+            subAssemblies: updatedSubAssemblies,
+          };
         });
       }
 

@@ -127,6 +127,10 @@ export const ProjectDetail: React.FC = () => {
     processes: [] as ProcessStep[],
   });
 
+  const formatNumber = (num: number) => {
+    return num.toLocaleString('id-ID');
+  };
+
   const project = projects.find((p) => p.id === id);
   const projectItems = items?.filter((i) => i.projectId === id) || [];
 
@@ -426,7 +430,7 @@ export const ProjectDetail: React.FC = () => {
                       <div className="flex items-center gap-4">
                         <span className="flex items-center gap-2 text-[11px] font-black text-slate-800 uppercase tracking-widest">
                           <Target size={14} className="text-blue-600" />{" "}
-                          {item.quantity} Target
+                          {formatNumber(item.quantity)} Target
                         </span>
                         <span className="flex items-center gap-2 text-[11px] font-black text-emerald-600 uppercase tracking-widest">
                           <CheckCircle2 size={14} /> {finishedQty} Sudah Jadi
@@ -478,7 +482,7 @@ export const ProjectDetail: React.FC = () => {
                             </th>
                           ))}
                           <th className="px-8 py-5 text-center bg-emerald-50/50">
-                            Stok Sisa <br />
+                            Sisa Stok <br />
                             <span className="text-[8px] opacity-60">
                               (Siap Las)
                             </span>
@@ -500,7 +504,7 @@ export const ProjectDetail: React.FC = () => {
                                 {sa.qtyPerParent}
                               </td>
                               <td className="px-8 py-6 text-center text-slate-900 font-black">
-                                {sa.totalNeeded}
+                                {formatNumber(sa.totalNeeded)}
                               </td>
                               {RAW_STEPS.map((s) => {
                                 const processes = (() => {
@@ -536,7 +540,7 @@ export const ProjectDetail: React.FC = () => {
                                         <span
                                           className={`px-3 py-1 rounded-xl font-black text-[11px] bg-slate-100 text-slate-800 shadow-sm`}
                                         >
-                                          {stats.produced}{" "}
+                                          {formatNumber(stats.produced)}{" "}
                                           <span className="text-[8px] opacity-40 ml-1">
                                             {perc}%
                                           </span>
@@ -548,7 +552,7 @@ export const ProjectDetail: React.FC = () => {
                                               : "text-slate-300"
                                           }`}
                                         >
-                                          Sedia: {stats.available}
+                                          Sedia: {formatNumber(stats.available)}
                                         </span>
                                       </div>
                                     ) : (
@@ -617,7 +621,7 @@ export const ProjectDetail: React.FC = () => {
                           {item.name}
                         </td>
                         <td className="px-8 py-6 text-center text-slate-900">
-                          {item.quantity}
+                          {formatNumber(item.quantity)}
                         </td>
                         {ASSEMBLY_STEPS.map((s) => {
                           const stats = item.assemblyStats?.[s] || {
@@ -655,7 +659,7 @@ export const ProjectDetail: React.FC = () => {
                             <td key={s} className="px-8 py-6 text-center">
                               <div className="flex flex-col items-center">
                                 <span className="px-3 py-1 rounded-xl font-black text-[11px] bg-blue-50 text-blue-600 shadow-sm">
-                                  {stats.produced}{" "}
+                                  {formatNumber(stats.produced)}{" "}
                                   <span className="text-[8px] opacity-40 ml-1">
                                     {perc}%
                                   </span>
@@ -667,7 +671,7 @@ export const ProjectDetail: React.FC = () => {
                                       : "text-slate-300"
                                   }`}
                                 >
-                                  Sedia: {availableQty}
+                                  Sedia: {formatNumber(availableQty)}
                                 </span>
                               </div>
                             </td>
@@ -735,7 +739,7 @@ export const ProjectDetail: React.FC = () => {
                               Target
                             </p>
                             <p className="text-sm font-black text-slate-500">
-                              {item.quantity}
+                              {formatNumber(item.quantity)}
                             </p>
                           </div>
                         </div>
