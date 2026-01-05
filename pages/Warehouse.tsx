@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { 
@@ -13,11 +12,11 @@ export const Warehouse: React.FC = () => {
 
   const processedItems = useMemo(() => {
     return items.map(item => {
-      // Sekarang stok menunggu validasi diambil langsung dari stasiun PACKING yang tersedia
-      const pendingValidation = item.assemblyStats?.['PACKING']?.available || 0;
+      // Stok menunggu validasi diambil dari nilai yang disave pada PACKING (produced), bukan available
+      const pendingValidation = item.assemblyStats?.['PACKING']?.produced || 0;
       const availableStock = (item.warehouseQty || 0) - (item.shippedQty || 0);
       const project = projects.find(p => p.id === item.projectId);
-      
+
       return {
         ...item,
         pendingValidation,

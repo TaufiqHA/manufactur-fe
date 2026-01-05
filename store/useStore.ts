@@ -1226,11 +1226,11 @@ export const useStore = create<AppState>((set, get) => ({
           };
 
           // Update current step stats
-          // SPECIAL CASE: For PACKING step (last assembly step), add to available for warehouse validation
+          // SPECIAL CASE: For PACKING step (last assembly step), decrease available as items are packed
           if (task.step === "PACKING") {
             nextAssemblyStats[task.step] = {
               produced: current.produced + goodQty,
-              available: (nextAssemblyStats[task.step]?.available || 0) + goodQty, // Add to available for warehouse
+              available: Math.max(0, current.available - (goodQty + defectQty)),
             };
           } else {
             nextAssemblyStats[task.step] = {
@@ -1645,14 +1645,15 @@ export const useStore = create<AppState>((set, get) => ({
         type: "WAREHOUSE_ENTRY",
       });
 
-      // Update assembly stats to remove the validated quantity from PACKING.available
+      // Update assembly stats to remove the validated quantity from PACKING.produced
+      // (not available, because available is for items ready to enter PACKING)
       const updatedAssemblyStats = { ...item.assemblyStats };
       if (!updatedAssemblyStats['PACKING']) {
         updatedAssemblyStats['PACKING'] = { produced: 0, available: 0 };
       }
       updatedAssemblyStats['PACKING'] = {
         ...updatedAssemblyStats['PACKING'],
-        available: Math.max(0, (updatedAssemblyStats['PACKING']?.available || 0) - qty),
+        produced: Math.max(0, (updatedAssemblyStats['PACKING']?.produced || 0) - qty),
       };
 
       // Update the item's warehouse quantity

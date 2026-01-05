@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
@@ -64,18 +63,12 @@ export const Login: React.FC = () => {
                 </div>
             )}
 
-            <button 
+            <button
                 type="submit"
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg shadow-blue-200 transition-all"
             >
                 MASUK SISTEM
             </button>
-            
-            <div className="text-center text-xs text-slate-400">
-                <p>Default Accounts:</p>
-                <p>admin (password: admin123)</p>
-                <p>user (password: user123)</p>
-            </div>
         </form>
       </div>
     </div>
