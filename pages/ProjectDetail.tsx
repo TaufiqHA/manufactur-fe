@@ -48,16 +48,14 @@ const SubAssemblyItem = memo(
               {sa.qtyPerParent} PCS / UNIT
             </span>
             <div className="flex gap-1">
-              {(Array.isArray(sa.processes) ? sa.processes : []).map(
-                (p, i) => (
-                  <span
-                    key={i}
-                    className="text-[8px] font-black text-blue-600 uppercase border border-blue-100 px-2 py-0.5 rounded-lg"
-                  >
-                    {p}
-                  </span>
-                )
-              )}
+              {(Array.isArray(sa.processes) ? sa.processes : []).map((p, i) => (
+                <span
+                  key={i}
+                  className="text-[8px] font-black text-blue-600 uppercase border border-blue-100 px-2 py-0.5 rounded-lg"
+                >
+                  {p}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -104,6 +102,9 @@ export const ProjectDetail: React.FC = () => {
     lockSubAssembly,
   } = useStore();
 
+  // Force update state to ensure re-render when needed
+  const [, forceUpdate] = useState({});
+
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState<string | null>(null);
   const [logDetailSa, setLogDetailSa] = useState<{
@@ -128,6 +129,23 @@ export const ProjectDetail: React.FC = () => {
 
   const project = projects.find((p) => p.id === id);
   const projectItems = items?.filter((i) => i.projectId === id) || [];
+
+  // Track the total number of sub-assemblies to trigger re-renders
+  const totalSubAssemblies = useMemo(() => {
+    return projectItems.reduce((total, item) => {
+      return total + (item.subAssemblies?.length || 0);
+    }, 0);
+  }, [projectItems]);
+
+  // State to force re-render when sub-assemblies change
+  const [subAssemblyCount, setSubAssemblyCount] = useState(totalSubAssemblies);
+
+  // Update the count when the total changes
+  useEffect(() => {
+    if (totalSubAssemblies !== subAssemblyCount) {
+      setSubAssemblyCount(totalSubAssemblies);
+    }
+  }, [totalSubAssemblies, subAssemblyCount]);
 
   // Log when sub-assemblies are fetched from backend
   // We'll use a flag to track if this is the first render
@@ -169,43 +187,31 @@ export const ProjectDetail: React.FC = () => {
     }
   }, [projectItems, id, project?.name]);
 
-  const stats = useMemo(() => {
-    const totalTarget = project?.totalQty || 0;
-    const completed = tasks
-      .filter((t) => t.projectId === id && t.step === "PACKING")
-      .reduce((acc, t) => acc + t.completedQty, 0);
-    const progress = totalTarget > 0 ? (completed / totalTarget) * 100 : 0;
-    return { totalTarget, completed, progress };
-  }, [id, tasks, project]);
-
-  if (!project)
-    return (
-      <div className="p-10 text-center font-bold text-slate-400 font-sans">
-        Project Tidak Ditemukan
-      </div>
-    );
-
-  const handleAddItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    addProjectItem({
-      ...newItem,
-      id: `item-${Date.now()}`,
-      projectId: project.id,
-      quantity: project.totalQty * newItem.qtySet,
-      isBomLocked: false,
-      isWorkflowLocked: false,
-      bom: [],
-      workflow: [],
-      subAssemblies: [],
-      warehouseQty: 0,
-      shippedQty: 0,
-      assemblyStats: {},
-    } as any);
-    setIsItemModalOpen(false);
-  };
+  // Define all callbacks before any conditional returns to follow React Hooks rules
+  const handleAddItem = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      addProjectItem({
+        ...newItem,
+        id: `item-${Date.now()}`,
+        projectId: project.id,
+        quantity: project.totalQty * newItem.qtySet,
+        isBomLocked: false,
+        isWorkflowLocked: false,
+        bom: [],
+        workflow: [],
+        subAssemblies: [],
+        warehouseQty: 0,
+        shippedQty: 0,
+        assemblyStats: {},
+      } as any);
+      setIsItemModalOpen(false);
+    },
+    [newItem, project, addProjectItem]
+  );
 
   const handleAddSub = useCallback(
-    (itemId: string) => {
+    async (itemId: string) => {
       console.log("handleAddSub - newSub before adding:", newSub);
       console.log(
         "handleAddSub - qtyPerParent value:",
@@ -224,7 +230,9 @@ export const ProjectDetail: React.FC = () => {
         "About to call addSubAssembly with qtyPerParent:",
         newSub.qtyPerParent
       );
-      addSubAssembly(itemId, {
+
+      // Create the new sub-assembly object
+      const newSubAssembly = {
         ...newSub,
         id: `sa-${Date.now()}`,
         totalNeeded:
@@ -235,13 +243,48 @@ export const ProjectDetail: React.FC = () => {
         consumedQty: 0,
         stepStats: {},
         isLocked: false,
-      });
+      };
+
+      // Call the store function to add the sub-assembly
+      await addSubAssembly(itemId, newSubAssembly);
+
       setNewSub({ name: "", qtyPerParent: 1, materialId: "", processes: [] });
     },
     [newSub, items, addSubAssembly]
   );
 
+  const stats = useMemo(() => {
+    const totalTarget = project?.totalQty || 0;
+    const completed = tasks
+      .filter((t) => t.projectId === id && t.step === "PACKING")
+      .reduce((acc, t) => acc + t.completedQty, 0);
+    const progress = totalTarget > 0 ? (completed / totalTarget) * 100 : 0;
+    return { totalTarget, completed, progress };
+  }, [id, tasks, project]);
 
+  // Check if store is still loading initial data
+  const isStoreLoading =
+    projects.length === 0 && items.length === 0 && materials.length === 0;
+
+  if (isStoreLoading) {
+    return (
+      <div className="p-10 text-center font-bold text-slate-400 font-sans">
+        Memuat data...
+      </div>
+    );
+  }
+
+  if (!project)
+    return (
+      <div className="p-10 text-center font-bold text-slate-400 font-sans">
+        Project Tidak Ditemukan
+      </div>
+    );
+
+  // Use the subAssemblyCount to ensure re-render when sub-assemblies change
+  if (subAssemblyCount !== undefined) {
+    // This is just to use the variable to prevent React from optimizing it away
+  }
 
   return (
     <div className="space-y-10 pb-20 font-sans">
@@ -412,7 +455,10 @@ export const ProjectDetail: React.FC = () => {
 
               {/* 1. MONITORING RAKITAN */}
               {item.flowType === "NEW" && (
-                <div className="p-10 pt-0 space-y-8">
+                <div
+                  key={`monitoring-rakitan-${item.id}`}
+                  className="p-10 pt-0 space-y-8"
+                >
                   <h4 className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-3">
                     <Component size={14} /> MONITORING RAKITAN (BAHAN MENTAH)
                   </h4>
@@ -432,7 +478,7 @@ export const ProjectDetail: React.FC = () => {
                             </th>
                           ))}
                           <th className="px-8 py-5 text-center bg-emerald-50/50">
-                            Stok Jadi <br />
+                            Stok Sisa <br />
                             <span className="text-[8px] opacity-60">
                               (Siap Las)
                             </span>
@@ -584,6 +630,27 @@ export const ProjectDetail: React.FC = () => {
                                   (stats.produced / item.quantity) * 100
                                 )
                               : 0;
+
+                          // Calculate available quantity for LAS step based on sub-assemblies
+                          let availableQty = stats.available;
+                          if (s === "LAS") {
+                            const saBalances = (item.subAssemblies || []).map(
+                              (sa) => {
+                                return Math.floor(
+                                  sa.completedQty / sa.qtyPerParent
+                                );
+                              }
+                            );
+                            availableQty =
+                              saBalances.length > 0
+                                ? Math.min(...saBalances)
+                                : Math.max(
+                                    0,
+                                    item.quantity -
+                                      (item.assemblyStats?.[s]?.produced || 0)
+                                  );
+                          }
+
                           return (
                             <td key={s} className="px-8 py-6 text-center">
                               <div className="flex flex-col items-center">
@@ -595,12 +662,12 @@ export const ProjectDetail: React.FC = () => {
                                 </span>
                                 <span
                                   className={`text-[10px] font-black mt-1 ${
-                                    stats.available > 0
+                                    availableQty > 0
                                       ? "text-emerald-600"
                                       : "text-slate-300"
                                   }`}
                                 >
-                                  Sedia: {stats.available}
+                                  Sedia: {availableQty}
                                 </span>
                               </div>
                             </td>
@@ -904,7 +971,6 @@ export const ProjectDetail: React.FC = () => {
           </div>
         </div>
       )}
-
 
       {/* MODAL INPUT ITEM */}
       {isItemModalOpen && (

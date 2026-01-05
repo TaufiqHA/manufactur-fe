@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useStore } from "../store/useStore";
 import {
   Save,
@@ -45,13 +45,18 @@ const STEP_PRIORITY: Record<ProcessStep, number> = {
 };
 
 export const BulkEntry: React.FC = () => {
-  const { projects, items, tasks, currentUser, users, reportProduction } =
+  const { projects, items, tasks, currentUser, users, reportProduction, initialize } =
     useStore();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("ALL");
   const [selectedStep, setSelectedStep] = useState<string>("ALL");
   const [inputs, setInputs] = useState<Record<string, InputRowState>>({});
   const [successRows, setSuccessRows] = useState<Record<string, boolean>>({});
+
+  // Fetch latest data when page loads
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
 
   const formatNumber = (num: number) => {
     return num.toLocaleString("id-ID");
@@ -111,7 +116,7 @@ export const BulkEntry: React.FC = () => {
       }
       if (currentStepIdx > 0) {
         const prevStep = ASSEMBLY_STEPS[currentStepIdx];
-        console.info(item);
+        console.info(item.assemblyStats?.[prevStep].available);
         return item.assemblyStats?.[prevStep]?.available || 0;
       }
       return Math.max(0, task.targetQty - task.completedQty);

@@ -598,9 +598,15 @@ export const useStore = create<AppState>((set, get) => ({
         });
 
         // Update the local state to reflect the changes
+        // Preserve sub-assemblies from the current state since API doesn't return them
         set((state) => ({
           items: state.items.map((i) =>
-            i.id === itemId ? normalizeResponse(updatedItem) : i
+            i.id === itemId
+              ? {
+                  ...normalizeResponse(updatedItem),
+                  subAssemblies: i.subAssemblies // Preserve existing sub-assemblies
+                }
+              : i
           ),
         }));
       }
@@ -679,12 +685,14 @@ export const useStore = create<AppState>((set, get) => ({
         });
 
         // Update the local state to reflect the changes
+        // Preserve sub-assemblies from the current state since API doesn't return them
         set((state) => ({
           items: state.items.map((i) =>
             i.id === itemId
               ? {
                   ...normalizeResponse(updatedItem),
                   assemblyStats: initializedAssemblyStats,
+                  subAssemblies: i.subAssemblies, // Preserve existing sub-assemblies
                 }
               : i
           ),
@@ -916,12 +924,14 @@ export const useStore = create<AppState>((set, get) => ({
       }, updatedItem.assemblyStats || {});
 
       // Update the local state to reflect the changes
+      // Preserve sub-assemblies from the current state since API doesn't return them
       set((state) => ({
         items: state.items.map((i) =>
           i.id === itemId
             ? {
                 ...normalizeResponse(updatedItem),
                 assemblyStats: initializedAssemblyStats,
+                subAssemblies: i.subAssemblies, // Preserve existing sub-assemblies
               }
             : i
         ),
@@ -992,9 +1002,15 @@ export const useStore = create<AppState>((set, get) => ({
       });
 
       // Update the local state to reflect the changes
+      // Preserve sub-assemblies from the current state since API doesn't return them
       set((state) => ({
         items: state.items.map((i) =>
-          i.id === itemId ? normalizeResponse(updatedItem) : i
+          i.id === itemId
+            ? {
+                ...normalizeResponse(updatedItem),
+                subAssemblies: i.subAssemblies // Preserve existing sub-assemblies
+              }
+            : i
         ),
       }));
     } catch (error) {
@@ -1030,9 +1046,15 @@ export const useStore = create<AppState>((set, get) => ({
       await Promise.all(itemTasks.map((task) => tasksAPI.delete(task.id)));
 
       // Update the local state to reflect the changes
+      // Preserve sub-assemblies from the current state since API doesn't return them
       set((state) => ({
         items: state.items.map((i) =>
-          i.id === itemId ? normalizeResponse(updatedItem) : i
+          i.id === itemId
+            ? {
+                ...normalizeResponse(updatedItem),
+                subAssemblies: i.subAssemblies // Preserve existing sub-assemblies
+              }
+            : i
         ),
         tasks: state.tasks.filter((t) => t.itemId !== itemId),
       }));
@@ -1204,22 +1226,30 @@ export const useStore = create<AppState>((set, get) => ({
           };
 
           // Update current step stats
-          nextAssemblyStats[task.step] = {
-            produced: current.produced + goodQty,
-            available: Math.max(0, current.available - (goodQty + defectQty)),
-          };
-
-          // Add good quantity to the next step's available
-          if (
-            currentStepIdx >= 0 &&
-            currentStepIdx < ASSEMBLY_STEPS.length - 1
-          ) {
-            const nextStep = ASSEMBLY_STEPS[currentStepIdx + 1];
-            nextAssemblyStats[nextStep] = {
-              ...nextAssemblyStats[nextStep],
-              available:
-                (nextAssemblyStats[nextStep]?.available || 0) + goodQty,
+          // SPECIAL CASE: For PACKING step (last assembly step), add to available for warehouse validation
+          if (task.step === "PACKING") {
+            nextAssemblyStats[task.step] = {
+              produced: current.produced + goodQty,
+              available: (nextAssemblyStats[task.step]?.available || 0) + goodQty, // Add to available for warehouse
             };
+          } else {
+            nextAssemblyStats[task.step] = {
+              produced: current.produced + goodQty,
+              available: Math.max(0, current.available - (goodQty + defectQty)),
+            };
+
+            // Add good quantity to the next step's available
+            if (
+              currentStepIdx >= 0 &&
+              currentStepIdx < ASSEMBLY_STEPS.length - 1
+            ) {
+              const nextStep = ASSEMBLY_STEPS[currentStepIdx + 1];
+              nextAssemblyStats[nextStep] = {
+                ...nextAssemblyStats[nextStep],
+                available:
+                  (nextAssemblyStats[nextStep]?.available || 0) + goodQty,
+              };
+            }
           }
 
 
@@ -1615,6 +1645,16 @@ export const useStore = create<AppState>((set, get) => ({
         type: "WAREHOUSE_ENTRY",
       });
 
+      // Update assembly stats to remove the validated quantity from PACKING.available
+      const updatedAssemblyStats = { ...item.assemblyStats };
+      if (!updatedAssemblyStats['PACKING']) {
+        updatedAssemblyStats['PACKING'] = { produced: 0, available: 0 };
+      }
+      updatedAssemblyStats['PACKING'] = {
+        ...updatedAssemblyStats['PACKING'],
+        available: Math.max(0, (updatedAssemblyStats['PACKING']?.available || 0) - qty),
+      };
+
       // Update the item's warehouse quantity
       const updatedItem = await projectItemsAPI.update(itemId, {
         ...item,
@@ -1622,14 +1662,18 @@ export const useStore = create<AppState>((set, get) => ({
         warehouseQty:
           (typeof item.warehouseQty === "number" ? item.warehouseQty : 0) + qty,
         shippedQty: typeof item.shippedQty === "number" ? item.shippedQty : 0,
-        assemblyStats:
-          typeof item.assemblyStats === "object" && item.assemblyStats !== null
-            ? item.assemblyStats
-            : {},
+        assemblyStats: updatedAssemblyStats,
       });
 
       set((state) => ({
-        items: state.items.map((i) => (i.id === itemId ? updatedItem : i)),
+        items: state.items.map((i) =>
+          i.id === itemId
+            ? {
+                ...updatedItem,
+                subAssemblies: i.subAssemblies // Preserve existing sub-assemblies
+              }
+            : i
+        ),
         logs: [normalizeResponse(log), ...state.logs],
       }));
     } catch (error) {
