@@ -222,19 +222,19 @@ export const useStore = create<AppState>((set, get) => ({
         deliveryOrdersRes,
         subAssembliesRes,
       ] = await Promise.allSettled([
-        projectsAPI.getAll(1, 100), // Get all projects (up to 100 for now)
-        materialsAPI.getAll(1, 100), // Get all materials
-        projectItemsAPI.getAll(1, 100), // Get all items
-        machinesAPI.getAll(1, 100), // Get all machines
-        tasksAPI.getAll(1, 100), // Get all tasks
-        usersAPI.getAll(1, 100), // Get all users
-        productionLogsAPI.getAll(1, 100), // Get all logs
-        suppliersAPI.getAll(1, 100), // Get all suppliers
-        rfqsAPI.getAll(1, 100), // Get all rfqs
-        purchaseOrdersAPI.getAll(1, 100), // Get all purchase orders
-        receivingGoodsAPI.getAll(1, 100), // Get all receiving goods
-        deliveryOrdersAPI.getAll(1, 100), // Get all delivery orders
-        subAssembliesAPI.getAll(1, 100), // Get all sub-assemblies
+        projectsAPI.getAll(1, 10000), // Get all projects
+        materialsAPI.getAll(1, 10000), // Get all materials
+        projectItemsAPI.getAll(1, 10000), // Get all items
+        machinesAPI.getAll(1, 10000), // Get all machines
+        tasksAPI.getAll(1, 10000), // Get all tasks
+        usersAPI.getAll(1, 10000), // Get all users
+        productionLogsAPI.getAll(1, 10000), // Get all logs
+        suppliersAPI.getAll(1, 10000), // Get all suppliers
+        rfqsAPI.getAll(1, 10000), // Get all rfqs
+        purchaseOrdersAPI.getAll(1, 10000), // Get all purchase orders
+        receivingGoodsAPI.getAll(1, 10000), // Get all receiving goods
+        deliveryOrdersAPI.getAll(1, 10000), // Get all delivery orders
+        subAssembliesAPI.getAll(1, 10000), // Get all sub-assemblies
       ]);
 
       // Helper to safely extract array from response
