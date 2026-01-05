@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { 
@@ -15,7 +14,7 @@ export const Executive: React.FC = () => {
       const projItems = items.filter(it => it.projectId === p.id);
       
       // Target Total: Sum of (qtySet * procurementQty) for all items in project
-      const targetTotalItems = projItems.reduce((acc, it) => acc + (it.qtySet * p.procurementQty), 0) || p.totalQty;
+      const targetTotalItems = p.totalQty;
       
       // Actual Total: Sum of warehouseQty for all items in project
       const actualTotalItems = projItems.reduce((acc, it) => acc + (it.warehouseQty || 0), 0);
