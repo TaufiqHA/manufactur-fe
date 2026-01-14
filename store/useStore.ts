@@ -333,21 +333,29 @@ export const useStore = create<AppState>((set, get) => ({
       // Attach sub-assemblies to their respective items and ensure all required properties exist
       const itemsWithSubAssemblies = itemsData.map((item) => {
         const subAssemblies = (subAssembliesByItem[item.id] || []).map((sa) => {
-          // Initialize stepStats for all process steps if not already done
-          const initializedStepStats =
-            Array.isArray(sa.processes) && sa.processes.length > 0
-              ? sa.processes.reduce((stats, process, index) => {
-                  stats[process] = {
+          // Initialize stepStats for all process steps according to API specification
+          const initializedStepStats = (() => {
+            // Start with the stepStats from the API response
+            const initialStepStats = { ...sa.stepStats };
+
+            // Ensure all processes in the sub-assembly have stepStats entries
+            if (Array.isArray(sa.processes) && sa.processes.length > 0) {
+              sa.processes.forEach((process, index) => {
+                if (!initialStepStats[process]) {
+                  initialStepStats[process] = {
                     produced: 0,
                     available: index === 0 ? sa.totalNeeded : 0, // Only first step starts with total needed as available
                   };
-                  return stats;
-                }, {})
-              : sa.stepStats || {};
+                }
+              });
+            }
+
+            return initialStepStats;
+          })();
 
           return {
             ...sa,
-            stepStats: { ...sa.stepStats, ...initializedStepStats },
+            stepStats: initializedStepStats,
           };
         });
 
@@ -562,22 +570,27 @@ export const useStore = create<AppState>((set, get) => ({
           i.id === itemId
             ? {
                 ...i,
-                // Initialize stepStats for all process steps if not already done
                 subAssemblies: [
                   ...(i.subAssemblies || []),
                   {
                     ...normalizeResponse(newSubAssembly),
-                    // Initialize stepStats for each process step with total needed as available for the first step
-                    stepStats: (Array.isArray(newSubAssembly.processes)
-                      ? newSubAssembly.processes
-                      : []
-                    ).reduce((stats, process, index) => {
-                      stats[process] = {
-                        produced: 0,
-                        available: index === 0 ? newSubAssembly.totalNeeded : 0, // Only first step starts with total needed as available
-                      };
-                      return stats;
-                    }, {}),
+                    // Initialize stepStats for all process steps according to API specification
+                    stepStats: (() => {
+                      // Start with the stepStats from the API response
+                      const initialStepStats = { ...newSubAssembly.stepStats };
+
+                      // Ensure all processes in the sub-assembly have stepStats entries
+                      processesArray.forEach((process, index) => {
+                        if (!initialStepStats[process]) {
+                          initialStepStats[process] = {
+                            produced: 0,
+                            available: index === 0 ? newSubAssembly.totalNeeded : 0, // Only first step starts with total needed as available
+                          };
+                        }
+                      });
+
+                      return initialStepStats;
+                    })(),
                   },
                 ],
               }
@@ -795,7 +808,7 @@ export const useStore = create<AppState>((set, get) => ({
             "Content-Type": "application/json",
             Authorization: `Bearer ${get().currentUser?.token || ""}`,
           },
-          body: JSON.stringify({ id: saId, isLocked: true }),
+          body: JSON.stringify({ isLocked: true }),
         }
       );
 
@@ -1218,9 +1231,9 @@ export const useStore = create<AppState>((set, get) => ({
                 ? sa.processes
                 : Object.values(sa.processes || []);
               const processIdx = processesArray.indexOf(task.step);
-              const nextStats = { ...sa.stepStats };
 
               // Initialize all steps in stepStats if not already present
+              const nextStats = { ...sa.stepStats };
               processesArray.forEach((process, idx) => {
                 if (!nextStats[process]) {
                   nextStats[process] = {
@@ -1375,7 +1388,23 @@ export const useStore = create<AppState>((set, get) => ({
                 : sa.processes
                 ? Object.values(sa.processes)
                 : [],
-              stepStats: { ...sa.stepStats },
+              stepStats: (() => {
+                // Ensure all processes in the sub-assembly have stepStats entries
+                const updatedStepStats = { ...sa.stepStats };
+
+                if (Array.isArray(sa.processes)) {
+                  sa.processes.forEach((process, index) => {
+                    if (!updatedStepStats[process]) {
+                      updatedStepStats[process] = {
+                        produced: 0,
+                        available: index === 0 ? sa.totalNeeded : 0, // Only first step starts with total needed as available
+                      };
+                    }
+                  });
+                }
+
+                return updatedStepStats;
+              })(),
               qtyPerParent: Number(sa.qtyPerParent) || 1, // Default to 1 if not a valid number
               totalNeeded: Number(sa.totalNeeded) || 0,
               completedQty: Number(sa.completedQty) || 0,

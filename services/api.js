@@ -565,16 +565,62 @@ export const subAssembliesAPI = {
   },
 
   create: async (subAssembly) => {
+    // Ensure stepStats contains all required process steps according to API specification
+    const processedSubAssembly = {
+      ...subAssembly,
+      stepStats: (() => {
+        // Start with the provided stepStats
+        const updatedStepStats = { ...subAssembly.stepStats };
+
+        // Ensure all processes in the sub-assembly have stepStats entries
+        if (Array.isArray(subAssembly.processes)) {
+          subAssembly.processes.forEach((process, index) => {
+            if (!updatedStepStats[process]) {
+              updatedStepStats[process] = {
+                produced: 0,
+                available: index === 0 ? (subAssembly.totalNeeded || 0) : 0, // Only first step starts with total needed as available
+              };
+            }
+          });
+        }
+
+        return updatedStepStats;
+      })(),
+    };
+
     return apiRequest("/sub-assemblies", {
       method: "POST",
-      body: JSON.stringify(subAssembly),
+      body: JSON.stringify(processedSubAssembly),
     });
   },
 
   update: async (id, subAssembly) => {
+    // Ensure stepStats contains all required process steps according to API specification
+    const processedSubAssembly = {
+      ...subAssembly,
+      stepStats: (() => {
+        // Start with the provided stepStats
+        const updatedStepStats = { ...subAssembly.stepStats };
+
+        // Ensure all processes in the sub-assembly have stepStats entries
+        if (Array.isArray(subAssembly.processes)) {
+          subAssembly.processes.forEach((process, index) => {
+            if (!updatedStepStats[process]) {
+              updatedStepStats[process] = {
+                produced: 0,
+                available: index === 0 ? (subAssembly.totalNeeded || 0) : 0, // Only first step starts with total needed as available
+              };
+            }
+          });
+        }
+
+        return updatedStepStats;
+      })(),
+    };
+
     return apiRequest(`/sub-assemblies/${id}`, {
       method: "PUT",
-      body: JSON.stringify(subAssembly),
+      body: JSON.stringify(processedSubAssembly),
     });
   },
 

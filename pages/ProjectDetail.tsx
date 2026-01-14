@@ -245,7 +245,14 @@ export const ProjectDetail: React.FC = () => {
         completedQty: 0,
         totalProduced: 0,
         consumedQty: 0,
-        stepStats: {},
+        // Initialize stepStats for all processes in the sub-assembly
+        stepStats: newSub.processes.reduce((stats, process, index) => {
+          stats[process] = {
+            produced: 0,
+            available: index === 0 ? ((items.find((i) => i.id === itemId)?.quantity || 0) * newSub.qtyPerParent) : 0
+          };
+          return stats;
+        }, {}),
         isLocked: false,
       };
 
